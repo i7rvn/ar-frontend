@@ -127,7 +127,7 @@ function renderLoginForm() {
 
   // حقول 2FA - تظهر فقط بعد رد الخادم بـ428
   const totpField = buildField({ id: 'totpCode', label: t('auth_totp_code'), type: 'text', autocomplete: 'one-time-code' });
-  totpField.style.display = 'none';
+  totpField.wrap.style.display = 'none';
 
   const useRecoveryLink = createEl('button', {
     type: 'button', class: 'link-btn', style: 'display:none',
@@ -140,7 +140,7 @@ function renderLoginForm() {
   let usingRecoveryCode = false;
   useRecoveryLink.addEventListener('click', () => {
     usingRecoveryCode = !usingRecoveryCode;
-    totpField.querySelector('label').textContent = usingRecoveryCode
+    totpField.wrap.querySelector('label').textContent = usingRecoveryCode
       ? 'كود الاسترجاع' : t('auth_totp_code');
     useRecoveryLink.textContent = usingRecoveryCode ? t('auth_totp_code') : t('auth_use_recovery');
   });
@@ -156,7 +156,7 @@ function renderLoginForm() {
       identifier: identifierField.input.value.trim(),
       password: passwordField.input.value,
     };
-    if (totpField.style.display !== 'none') {
+    if (totpField.wrap.style.display !== 'none') {
       if (usingRecoveryCode) payload.recoveryCode = totpField.input.value.trim();
       else payload.totpCode = totpField.input.value.trim();
     }
@@ -169,7 +169,7 @@ function renderLoginForm() {
       navigate('/');
     } catch (err) {
       if (err.status === 428 && err.requiresTOTP) {
-        totpField.style.display = '';
+        totpField.wrap.style.display = '';
         useRecoveryLink.style.display = '';
         totpField.input.focus();
         showToast(t('auth_totp_title'), 'info');
