@@ -9,8 +9,8 @@
 // ═══════════════════════════════════════════════════════════════
 
 export const CONFIG = Object.freeze({
-  API_URL: 'https://ar-backend-cvkf.onrender.com/api',
-  WS_URL: 'wss://ar-backend-cvkf.onrender.com/ws',
+  API_URL: 'https://ar-backend-tvx7.onrender.com/api',
+  WS_URL: 'https://ar-backend-tvx7.onrender.com/ws',
 
   CLIENT_KEY: '316755279b8e57c08c4fac2b83a743a76ef8097820a10b1135d32793afaaf868',
 
