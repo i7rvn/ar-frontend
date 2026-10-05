@@ -1,0 +1,155 @@
+@import "tailwindcss";
+
+/* الثيم يُحدَّد بخاصية data-theme على <html> (يضبطها theme-init.js قبل أول رسم) */
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+/* ─────────────────────────────────────────────────────────────────
+   هوية بصرية مستمدة من الموضوع نفسه: "الجزائر البيضاء" (جدران القصبة
+   المطليّة بالجير) + ليل المتوسط (أزرق بحري عميق) + أخضر العلم + رمل
+   الصحراء للتمييز. الأخضر للفعل الرئيسي، الرمل للتمييز (تثبيت/توثيق)،
+   الأحمر للخطر والإعجاب. لا شي آخر.
+   ───────────────────────────────────────────────────────────────── */
+:root,
+[data-theme="light"] {
+  --bg: #f4f6f8;
+  --surface: #ffffff;
+  --raised: #ffffff;
+  --fg: #0f1e2e;
+  --muted: #4b5b6b;
+  --subtle: #5d6c7b; /* 4.97:1 على bg، 5.39:1 على surface (WCAG AA) */
+  --line: rgb(15 30 46 / 0.11);
+  --brand: #0b7a47;
+  --on-brand: #ffffff;
+  --brand-soft: rgb(11 122 71 / 0.1);
+  --sand: #8a5f0c;
+  --sand-soft: rgb(138 95 12 / 0.12);
+  --danger: #c4102f;
+  --danger-soft: rgb(196 16 47 / 0.1);
+  --glass: rgb(244 246 248 / 0.78);
+  color-scheme: light;
+}
+
+[data-theme="dark"] {
+  --bg: #0b1622;
+  --surface: #101f2e;
+  --raised: #162838;
+  --fg: #eaf0f6;
+  --muted: #93a5b8;
+  --subtle: #7f92a6; /* ≥4.71:1 على كل الأسطح الداكنة (WCAG AA) */
+  --line: rgb(234 240 246 / 0.1);
+  --brand: #2bc47a;
+  --on-brand: #052313;
+  --brand-soft: rgb(43 196 122 / 0.14);
+  --sand: #e7c37a;
+  --sand-soft: rgb(231 195 122 / 0.14);
+  --danger: #ff6b83;
+  --danger-soft: rgb(255 107 131 / 0.14);
+  --glass: rgb(11 22 34 / 0.72);
+  color-scheme: dark;
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-raised: var(--raised);
+  --color-fg: var(--fg);
+  --color-muted: var(--muted);
+  --color-subtle: var(--subtle);
+  --color-line: var(--line);
+  --color-brand: var(--brand);
+  --color-on-brand: var(--on-brand);
+  --color-brand-soft: var(--brand-soft);
+  --color-sand: var(--sand);
+  --color-sand-soft: var(--sand-soft);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+  --color-glass: var(--glass);
+
+  --font-sans: "IBM Plex Sans Arabic", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-display: "Noto Kufi Arabic", "IBM Plex Sans Arabic", system-ui, sans-serif;
+
+  /* أنصاف أقطار مختلفة حسب مستوى العنصر — ماشي نفس القيمة على كل شيء */
+  --radius-control: 0.625rem;
+  --radius-surface: 1.25rem;
+
+  /* ظل فقط للطبقات العائمة (قوائم، نوافذ) — البطاقات المسطّحة بلا ظل */
+  --shadow-float: 0 18px 40px -12px rgb(0 0 0 / 0.38), 0 2px 6px rgb(0 0 0 / 0.12);
+}
+
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--fg);
+    font-family: var(--font-sans);
+    font-size: 1rem;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+    overflow-wrap: anywhere; /* كلمات/روابط طويلة ما تكسرش التخطيط على الشاشات الصغيرة */
+  }
+
+  /* يلغي تأخير النقر ويمنع تكبير مزدوج بالنقر على عناصر التحكم (موبايل) */
+  button, a, [role="button"], input, textarea, select {
+    touch-action: manipulation;
+  }
+
+  button { cursor: pointer; }
+  button:disabled { cursor: not-allowed; }
+
+  :focus-visible {
+    outline: 2px solid var(--brand);
+    outline-offset: 2px;
+    border-radius: 0.375rem;
+  }
+
+  ::selection {
+    background: var(--brand);
+    color: var(--on-brand);
+  }
+
+  * { scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
+}
+
+@layer utilities {
+  /* المناطق الآمنة (notch / شريط التنقل السفلي بالآيفون) */
+  .pt-safe { padding-top: env(safe-area-inset-top, 0px); }
+  .pb-safe { padding-bottom: env(safe-area-inset-bottom, 0px); }
+
+  /* طبقة زجاجية — فقط للعناصر العائمة فوق المحتوى (شريط علوي/سفلي،
+     قوائم، نوافذ). blur معتدل عمداً: أرخص على أجهزة الموبايل الضعيفة */
+  .glass {
+    background: var(--glass);
+    -webkit-backdrop-filter: blur(14px) saturate(1.4);
+    backdrop-filter: blur(14px) saturate(1.4);
+  }
+
+  /* الشعور بالضغط: transform فقط (بلا reflow) */
+  .press { transition: transform 120ms ease-out; }
+  .press:active:not(:disabled) { transform: scale(0.97); }
+}
+
+/* ─── العنصر المميّز الوحيد: نجمة زليج (ثمانية رؤوس) ──────────────────
+   مرسومة كقناع (mask) بلون العلامة، تظهر فقط بشاشة الدخول. */
+.zellige {
+  background: var(--brand);
+  opacity: 0.16;
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='72' height='72' viewBox='0 0 72 72'%3E%3Cg fill='none' stroke='black' stroke-width='1.1'%3E%3Crect x='13.4' y='13.4' width='45.2' height='45.2'/%3E%3Crect x='13.4' y='13.4' width='45.2' height='45.2' transform='rotate(45 36 36)'/%3E%3Ccircle cx='36' cy='36' r='6.5'/%3E%3C/g%3E%3C/svg%3E");
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='72' height='72' viewBox='0 0 72 72'%3E%3Cg fill='none' stroke='black' stroke-width='1.1'%3E%3Crect x='13.4' y='13.4' width='45.2' height='45.2'/%3E%3Crect x='13.4' y='13.4' width='45.2' height='45.2' transform='rotate(45 36 36)'/%3E%3Ccircle cx='36' cy='36' r='6.5'/%3E%3C/g%3E%3C/svg%3E");
+  -webkit-mask-size: 72px 72px;
+  mask-size: 72px 72px;
+}
+
+/* احترام تفضيل تقليل الحركة على مستوى النظام */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
