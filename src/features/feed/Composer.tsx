@@ -30,7 +30,7 @@ export function Composer({ onPosted, autoFocus, className }: ComposerProps) {
 
   function submit() {
     if (empty || over || create.isPending) return
-    create.mutate(text.trim(), {
+    create.mutate({ content: text.trim() }, {
       onSuccess: () => {
         setText('')
         toast(t('feed_posted'), 'success')
