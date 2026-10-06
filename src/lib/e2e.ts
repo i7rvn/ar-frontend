@@ -112,3 +112,16 @@ export async function decryptTextMessage(message: Message): Promise<string | nul
 }
 
 export { bytesToBase64 }
+export interface ConversationE2EMember {
+  userId: string
+  keyId: string | null
+  publicKeyJwk: JsonWebKey | null
+  keyVersion?: number | null
+}
+
+export async function getConversationE2EMembers(conversationId: string): Promise<ConversationE2EMember[]> {
+  const res = await api.get<ApiEnvelope<ConversationE2EMember[]>>(
+    `/messages/conversations/${encodeURIComponent(conversationId)}/e2e-members`,
+  )
+  return res.data
+}
