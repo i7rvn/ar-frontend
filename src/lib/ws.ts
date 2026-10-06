@@ -26,8 +26,8 @@ interface RealtimeSocket {
 
 async function getWebSocketTicket(): Promise<string> {
   const response = await api.post<ApiEnvelope<{ ticket: string; expiresIn: number }>>('/auth/ws-ticket', {})
-  if (!response.data.ticket) throw new Error('تعذر إنشاء جلسة WebSocket')
-  return response.data.ticket
+  if (!response.data.data.ticket) throw new Error('تعذر إنشاء جلسة WebSocket')
+  return response.data.data.ticket
 }
 
 function websocketUrl(ticket: string): string {
