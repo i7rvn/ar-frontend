@@ -1,4 +1,4 @@
-import { Bell, Home, Mail, Search, Settings, User, Users, type LucideIcon } from 'lucide-react'
+import { Bell, Home, Mail, Search, Settings, User, Users, Clock3, type LucideIcon } from 'lucide-react'
 import type { TranslationKey } from '@/i18n/dictionary'
 
 export interface NavItem {
@@ -15,6 +15,7 @@ export function getNavItems(username: string | undefined): NavItem[] {
     { to: '/notifications', key: 'nav_notifications', icon: Bell },
     { to: '/messages', key: 'nav_messages', icon: Mail },
     { to: '/communities', key: 'nav_communities', icon: Users },
+    { to: '/stories', key: 'nav_stories', icon: Clock3 },
     { to: username ? `/profile/${username}` : '/', key: 'nav_profile', icon: User },
     { to: '/settings', key: 'nav_settings', icon: Settings },
   ]
