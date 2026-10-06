@@ -10,7 +10,7 @@ function stringField(payload: JsonObject, key: string): string | undefined {
   return typeof payload[key] === 'string' ? payload[key] as string : undefined
 }
 
-function isMessagePayload(payload: JsonObject): payload is Message {
+function isMessagePayload(payload: JsonObject): boolean {
   return Boolean(
     stringField(payload, 'id') &&
     stringField(payload, 'conversation_id') &&
@@ -140,16 +140,16 @@ export function useRealtimeConversation(conversationId: string | undefined, hand
       const payloadUserId = stringField(payload, 'userId')
       const payloadMessageId = stringField(payload, 'messageId') ?? stringField(payload, 'id')
       if (event.type === 'message:new' && payloadConversationId === conversationId) {
-        if (isMessagePayload(payload)) handlersRef.current.onMessage?.(payload)
+        if (isMessagePayload(payload)) handlersRef.current.onMessage?.(payload as unknown as Message)
         if (payloadMessageId && stringField(payload, 'sender_id')) client.send('message:delivered', { conversationId, messageId: payloadMessageId })
       } else if (event.type === 'message:edited' && payloadConversationId === conversationId) {
-        if (isMessagePayload(payload)) handlersRef.current.onMessageEdited?.(payload)
+        if (isMessagePayload(payload)) handlersRef.current.onMessageEdited?.(payload as unknown as Message)
       } else if (event.type === 'message:reaction') {
         handlersRef.current.onMessageReaction?.(payload)
       } else if (event.type === 'message:pinned' && payloadConversationId === conversationId) {
-        if (isMessagePayload(payload)) handlersRef.current.onMessagePinned?.(payload)
+        if (isMessagePayload(payload)) handlersRef.current.onMessagePinned?.(payload as unknown as Message)
       } else if (event.type === 'message:unpinned' && payloadConversationId === conversationId) {
-        if (isMessagePayload(payload)) handlersRef.current.onMessageUnpinned?.(payload)
+        if (isMessagePayload(payload)) handlersRef.current.onMessageUnpinned?.(payload as unknown as Message)
       } else if ((event.type === 'typing:start' || event.type === 'typing:stop') && payloadConversationIdCamel === conversationId && payloadUserId) {
         handlersRef.current.onTyping?.({ type: event.type, userId: payloadUserId, conversationId })
         setTypingUserIds((ids) => event.type === 'typing:start'
