@@ -76,7 +76,7 @@ export function RegisterPage() {
         { auth: false },
       ),
     onSuccess: (res) => {
-      tokens.set(res.data.accessToken, res.data.refreshToken)
+      tokens.set(res.data.accessToken)
       setUser(res.data.user)
       toast(t('auth_welcome'), 'success')
       navigate('/', { replace: true })
