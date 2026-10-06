@@ -46,21 +46,16 @@ async function parseJsonBody<T>(response: Response): Promise<T | null> {
 let refreshPromise: Promise<void> | null = null
 
 async function refreshSession(): Promise<void> {
-  const refreshToken = tokens.getRefresh()
-  if (!refreshToken) throw new ApiError('لا توجد جلسة', 401, 'NO_SESSION')
-
   const res = await fetch(`${config.apiUrl}/auth/refresh-token`, {
     method: 'POST',
+    credentials: 'include',
     headers: { 'Content-Type': 'application/json', 'X-Client-Key': config.clientKey },
-    body: JSON.stringify({ refreshToken }),
+    body: JSON.stringify({}),
   })
   if (!res.ok) throw new ApiError('انتهت الجلسة', 401, 'SESSION_EXPIRED')
-
-  const json = (await res.json()) as ApiEnvelope<{ accessToken: string; refreshToken: string }>
-  // لازم نخزّن الاثنين: الخادم يبطّل القديم بعد كل تجديد
-  tokens.set(json.data.accessToken, json.data.refreshToken)
+  const json = (await res.json()) as ApiEnvelope<{ accessToken: string }>
+  tokens.set(json.data.accessToken)
 }
-
 async function request<T>(endpoint: string, opts: RequestOptions = {}, isRetry = false): Promise<T> {
   const { method = 'GET', body, auth = true, signal } = opts
 
