@@ -24,12 +24,22 @@ export class ApiError extends Error {
   }
 }
 
+interface ApiErrorBody { message?: string; code?: string; requiresTOTP?: boolean; retryAfterSeconds?: number }
+
 interface RequestOptions {
   method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
   body?: unknown
   /** false = لا نبعث Authorization ولا نحاول تجديد التوكن (تسجيل الدخول/التسجيل) */
   auth?: boolean
   signal?: AbortSignal
+}
+
+async function parseJsonBody<T>(response: Response): Promise<T | null> {
+  try {
+    return (await response.json()) as T
+  } catch {
+    return null
+  }
 }
 
 // يمنع سباق عدة تجديدات توكن متزامنة (الخادم يدوّر refresh token)
@@ -74,12 +84,7 @@ async function request<T>(endpoint: string, opts: RequestOptions = {}, isRetry =
     throw new ApiError('تحقق من اتصالك بالإنترنت', 0, 'NETWORK_ERROR')
   }
 
-  let json: (Record<string, unknown> & { message?: string; code?: string }) | null = null
-  try {
-    json = await response.json()
-  } catch {
-    // رد بلا JSON (نادر) — نكمل بجسم فارغ
-  }
+  const json = await parseJsonBody<ApiErrorBody>(response)
 
   // 401: نجدد التوكن مرة واحدة ثم نعيد نفس الطلب
   if (response.status === 401 && auth && !isRetry && tokens.getRefresh()) {
@@ -126,8 +131,7 @@ async function upload<T>(endpoint: string, form: FormData, signal?: AbortSignal)
     throw new ApiError('تحقق من اتصالك بالإنترنت', 0, 'NETWORK_ERROR')
   }
 
-  let json: (Record<string, unknown> & { message?: string; code?: string }) | null = null
-  try { json = (await response.json()) as typeof json } catch {}
+  const json = await parseJsonBody<ApiErrorBody>(response)
 
   if (response.status === 401 && token && tokens.getRefresh()) {
     try {
@@ -152,6 +156,8 @@ export const api = {
     request<T>(endpoint, { ...opts, method: 'POST', body: body ?? {} }),
   put: <T>(endpoint: string, body?: unknown, opts?: Omit<RequestOptions, 'method' | 'body'>) =>
     request<T>(endpoint, { ...opts, method: 'PUT', body: body ?? {} }),
+  patch: <T>(endpoint: string, body?: unknown, opts?: Omit<RequestOptions, 'method' | 'body'>) =>
+    request<T>(endpoint, { ...opts, method: 'PATCH', body: body ?? {} }),
   upload: <T>(endpoint: string, form: FormData, signal?: AbortSignal) => upload<T>(endpoint, form, signal),
   delete: <T>(endpoint: string, opts?: Omit<RequestOptions, 'method' | 'body'>) =>
     request<T>(endpoint, { ...opts, method: 'DELETE' }),

@@ -8,8 +8,8 @@ import { Input } from '@/components/ui/Input'
 import { Modal } from '@/components/ui/Modal'
 import { Spinner } from '@/components/ui/Spinner'
 import { api } from '@/lib/api'
-import { getPublicKey, registerOwnPublicKey, encryptTextForRecipients, decryptTextMessage } from '@/lib/e2e'
-import { formatCount, relativeTime } from '@/lib/format'
+import { registerOwnPublicKey, getConversationE2EMembers, encryptTextForRecipients, decryptTextMessage } from '@/lib/e2e'
+import { relativeTime } from '@/lib/format'
 import { useT } from '@/i18n/useT'
 import { cn } from '@/lib/cn'
 import { useAuthStore } from '@/stores/auth'
@@ -32,7 +32,7 @@ export function SearchPage() {
   function submit(e: FormEvent) { e.preventDefault(); setSubmitted(q.trim()) }
   return <section>
     <PageTitle icon={Search} title='بحث' body='ابحث عن أشخاص ومنشورات ووسوم داخل AR' />
-    <form onSubmit={submit} className='border-b border-line p-4'><Input value={q} onChange={(e) => setQ(e.target.value)} placeholder='اكتب كلمتين أو أكثر...' aria-label='البحث' /><Button type='submit' className='mt-3' disabled={q.trim().length < 2}>بحث</Button></form>
+    <form onSubmit={submit} className='border-b border-line p-4'><Input label='البحث' value={q} onChange={(e) => setQ(e.target.value)} placeholder='اكتب كلمتين أو أكثر...' aria-label='البحث' /><Button type='submit' className='mt-3' disabled={q.trim().length < 2}>بحث</Button></form>
     {result.isPending && <div className='grid place-items-center p-10'><Spinner /></div>}
     {result.isError && <p className='p-8 text-center text-danger'>{result.error.message}</p>}
     {result.data && <div>
@@ -65,16 +65,24 @@ export function MessagesPage() {
   useEffect(() => { void registerOwnPublicKey().catch((e: Error) => toast(e.message, 'error')) }, [toast])
   const send = useMutation({ mutationFn: async () => {
     if (!conversationId || !user || !text.trim()) throw new Error('الرسالة فارغة')
-    if (current?.type !== 'direct' || !current.other_user_id) throw new Error('الإرسال المشفّر للمجموعات يحتاج قائمة مفاتيح أعضاء المجموعة.')
-    const ownKey = await getPublicKey(user.id); const peerKey = await getPublicKey(current.other_user_id)
-    if (!ownKey || !peerKey) throw new Error('لازم الطرفان يسجلوا مفاتيح E2E قبل الإرسال')
-    const encrypted = await encryptTextForRecipients(text.trim(), [{ userId: user.id, keyId: ownKey.id, publicKeyJwk: ownKey.publicKeyJwk }, { userId: current.other_user_id, keyId: peerKey.id, publicKeyJwk: peerKey.publicKeyJwk }])
+    const members = await getConversationE2EMembers(conversationId)
+    if (members.some((member) => !member.keyId || !member.publicKeyJwk)) {
+      throw new Error('بعض أعضاء المحادثة لم يسجلوا مفتاح E2E بعد')
+    }
+    const encrypted = await encryptTextForRecipients(
+      text.trim(),
+      members.map((member) => ({
+        userId: member.userId,
+        keyId: member.keyId!,
+        publicKeyJwk: member.publicKeyJwk!,
+      })),
+    )
     return api.post('/messages/send', { conversationId, ...encrypted, msgType: 'text' })
   }, onSuccess: () => { setText(''); void messages.refetch(); void convs.refetch() }, onError: (e: Error) => toast(e.message, 'error') })
   return <section className='min-h-[calc(100dvh-1px)]'>
     <PageTitle icon={MessageCircle} title='الرسائل' body='محادثاتك الخاصة مع تشفير E2E من جهة العميل' />
     <div className='grid min-h-[70dvh] md:grid-cols-[17rem_1fr]'>
-      <aside className='border-e border-line'>{conversations.map((c) => { const cid = c.conversation_id ?? c.id!; return <button type='button' key={cid} onClick={() => nav(`/messages/${cid}`)} className={cn('flex w-full items-center gap-3 border-b border-line p-3 text-start hover:bg-brand-soft', cid === conversationId && 'bg-brand-soft')}><div className='grid size-9 place-items-center rounded-full bg-surface text-brand'>{c.type === 'group' ? <Users size={18} /> : <MessageCircle size={18} />}</div><div className='min-w-0'><p className='truncate font-semibold'>{c.name || 'محادثة مباشرة'}</p><p className='truncate text-xs text-muted'>{c.last_msg_text || 'لا توجد رسائل بعد'}</p></div>{(c.unread_count ?? 0) > 0 && <span className='ms-auto rounded-full bg-brand px-2 py-0.5 text-xs text-on-brand'>{c.unread_count}</span>}</button> })}</aside>
+      <aside className='border-e border-line'>{conversations.map((c) => { const cid = c.conversation_id ?? c.id!; return <button type='button' key={cid} onClick={() => nav(`/messages/${cid}`)} className={cn('flex w-full items-center gap-3 border-b border-line p-3 text-start hover:bg-brand-soft', cid === conversationId && 'bg-brand-soft')}><div className='grid size-9 place-items-center rounded-full bg-surface text-brand'>{c.type === 'group' ? <Users size={18} /> : <MessageCircle size={18} />}</div><div className='min-w-0'><p className='truncate font-semibold'>{c.display_name || c.name || 'محادثة مباشرة'}</p><p className='truncate text-xs text-muted'>{c.last_msg_text || 'لا توجد رسائل بعد'}</p></div>{(c.unread_count ?? 0) > 0 && <span className='ms-auto rounded-full bg-brand px-2 py-0.5 text-xs text-on-brand'>{c.unread_count}</span>}</button> })}</aside>
       <div className='flex min-h-[60dvh] flex-col'>{!conversationId ? <div className='grid flex-1 place-items-center p-8 text-center text-muted'>اختار محادثة للبدء.</div> : <><div className='flex-1 space-y-2 overflow-y-auto p-4'>{messages.isPending ? <Spinner /> : messages.data?.data.map((m) => <MessageBubble key={m.id} message={m} currentUserId={user?.id} onEdit={() => setEditing(m)} />)}</div><form onSubmit={(e) => { e.preventDefault(); send.mutate() }} className='border-t border-line p-3'><div className='flex gap-2'><input value={text} onChange={(e) => setText(e.target.value)} placeholder='اكتب رسالة مشفرة...' className='min-w-0 flex-1 rounded-control border border-line bg-transparent px-3 py-2 outline-none focus:border-brand' /><Button type='submit' loading={send.isPending}>إرسال</Button></div></form></>}</div>
     </div>
     <EditMessageModal message={editing} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); void messages.refetch() }} />
@@ -94,10 +102,23 @@ function EditMessageModal({ message, onClose, onSaved }: { message: Message | nu
   useEffect(() => { if (message) decryptTextMessage(message).then((v) => setText(v ?? '')) }, [message])
   const mutation = useMutation({ mutationFn: async () => {
     if (!message || !text.trim()) throw new Error('المحتوى فارغ')
-    const identity = await getPublicKey(message.sender_id); if (!identity) throw new Error('مفتاح E2E غير موجود')
-    const ownIdentity = await getPublicKey(useAuthStore.getState().user!.id); if (!ownIdentity) throw new Error('مفتاح E2E غير موجود')
-    const encrypted = await encryptTextForRecipients(text.trim(), [{ userId: useAuthStore.getState().user!.id, keyId: ownIdentity.id, publicKeyJwk: ownIdentity.publicKeyJwk }, { userId: message.sender_id, keyId: identity.id, publicKeyJwk: identity.publicKeyJwk }])
-    return api.patch(`/messages/${message.id}`, { encryptedContent: encrypted.encrypted_content, nonce: encrypted.nonce })
+    const members = await getConversationE2EMembers(message.conversation_id)
+    if (members.some((member) => !member.keyId || !member.publicKeyJwk)) {
+      throw new Error('بعض أعضاء المحادثة لم يسجلوا مفتاح E2E بعد')
+    }
+    const encrypted = await encryptTextForRecipients(
+      text.trim(),
+      members.map((member) => ({
+        userId: member.userId,
+        keyId: member.keyId!,
+        publicKeyJwk: member.publicKeyJwk!,
+      })),
+    )
+    return api.patch(`/messages/${message.id}`, {
+      encryptedContent: encrypted.encrypted_content,
+      nonce: encrypted.nonce,
+      keyEnvelopes: encrypted.keyEnvelopes,
+    })
   }, onSuccess: onSaved })
   return <Modal open={Boolean(message)} onClose={onClose} title='تعديل الرسالة'><textarea value={text} onChange={(e) => setText(e.target.value)} rows={5} className='w-full rounded-control border border-line bg-transparent p-3 outline-none focus:border-brand' /><Button className='mt-3' onClick={() => mutation.mutate()} loading={mutation.isPending}>حفظ التعديل</Button></Modal>
 }
@@ -111,7 +132,7 @@ export function SettingsPage() {
   const user=useAuthStore((s)=>s.user); const toast=useUiStore((s)=>s.toast); const qc=useQueryClient(); const [name,setName]=useState(user?.display_name??''); const [bio,setBio]=useState(user?.bio??''); const [phrase,setPhrase]=useState(''); const filters=useQuery({queryKey:['word-filters'],queryFn:()=>api.get<ApiEnvelope<Array<{id:string;phrase:string;expires_at:string|null}>>>('/word-filters')})
   const save=useMutation({mutationFn:()=>api.put<ApiEnvelope<User>>('/users/profile',{display_name:name,bio}),onSuccess:(r)=>{useAuthStore.getState().setUser({...user!,...r.data});toast('تم حفظ الملف','success')}})
   const add=useMutation({mutationFn:()=>api.post('/word-filters',{phrase}),onSuccess:()=>{setPhrase('');void qc.invalidateQueries({queryKey:['word-filters']})}}); const remove=useMutation({mutationFn:(id:string)=>api.delete(`/word-filters/${id}`),onSuccess:()=>void qc.invalidateQueries({queryKey:['word-filters']})})
-  return <section><PageTitle icon={Settings} title='الإعدادات' /><div className='space-y-6 p-5'><div className='rounded-surface border border-line p-4'><h2 className='font-bold'>الملف الشخصي</h2><div className='mt-4 space-y-3'><Input label='الاسم' value={name} onChange={(e)=>setName(e.target.value)} /><textarea aria-label='النبذة' value={bio} onChange={(e)=>setBio(e.target.value)} rows={4} maxLength={500} className='w-full rounded-control border border-line bg-transparent p-3 outline-none focus:border-brand' placeholder='نبذة عنك' /><Button onClick={()=>save.mutate()} loading={save.isPending}>حفظ</Button></div></div><div className='rounded-surface border border-line p-4'><h2 className='font-bold'>فلاتر الكلمات في الفيد</h2><p className='mt-1 text-sm text-muted'>أي منشور يحتوي العبارة لن يظهر لك أثناء مدة الفلتر.</p><div className='mt-4 flex gap-2'><Input value={phrase} onChange={(e)=>setPhrase(e.target.value)} placeholder='مثال: spoiler' /><Button onClick={()=>add.mutate()} disabled={!phrase.trim()} loading={add.isPending}>إضافة</Button></div><div className='mt-4 space-y-2'>{filters.data?.data.map((f)=><div key={f.id} className='flex items-center justify-between rounded-control bg-raised p-3'><span>{f.phrase}</span><button type='button' onClick={()=>remove.mutate(f.id)} className='text-danger' aria-label='حذف'><X size={18}/></button></div>)}</div></div></div></section>
+  return <section><PageTitle icon={Settings} title='الإعدادات' /><div className='space-y-6 p-5'><div className='rounded-surface border border-line p-4'><h2 className='font-bold'>الملف الشخصي</h2><div className='mt-4 space-y-3'><Input label='الاسم' value={name} onChange={(e)=>setName(e.target.value)} /><textarea aria-label='النبذة' value={bio} onChange={(e)=>setBio(e.target.value)} rows={4} maxLength={500} className='w-full rounded-control border border-line bg-transparent p-3 outline-none focus:border-brand' placeholder='نبذة عنك' /><Button onClick={()=>save.mutate()} loading={save.isPending}>حفظ</Button></div></div><div className='rounded-surface border border-line p-4'><h2 className='font-bold'>فلاتر الكلمات في الفيد</h2><p className='mt-1 text-sm text-muted'>أي منشور يحتوي العبارة لن يظهر لك أثناء مدة الفلتر.</p><div className='mt-4 flex gap-2'><Input label='العبارة' value={phrase} onChange={(e)=>setPhrase(e.target.value)} placeholder='مثال: spoiler' /><Button onClick={()=>add.mutate()} disabled={!phrase.trim()} loading={add.isPending}>إضافة</Button></div><div className='mt-4 space-y-2'>{filters.data?.data.map((f)=><div key={f.id} className='flex items-center justify-between rounded-control bg-raised p-3'><span>{f.phrase}</span><button type='button' onClick={()=>remove.mutate(f.id)} className='text-danger' aria-label='حذف'><X size={18}/></button></div>)}</div></div></div></section>
 }
 
 export function StatsPage() { const q=useQuery({queryKey:['stats'],queryFn:()=>api.get<any>('/stats?days=7')}); return <section><PageTitle icon={BarChart3} title='الإحصائيات' />{q.isPending?<div className='grid place-items-center p-10'><Spinner/></div>:<div className='grid gap-3 p-4 sm:grid-cols-2'>{['impressions','engagement','profileVisits','newFollowers'].map((k)=><div key={k} className='rounded-surface border border-line bg-surface p-4'><p className='text-sm text-muted'>{k}</p><p className='mt-2 text-2xl font-bold'>{q.data?.[k]?.value??0}</p><p className='text-xs text-muted'>{q.data?.[k]?.changePercent??0}% مقارنة بالفترة السابقة</p></div>)}</div>}</section> }

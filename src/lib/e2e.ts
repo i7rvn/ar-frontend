@@ -61,6 +61,11 @@ function base64ToBytes(value: string): Uint8Array {
   return Uint8Array.from(binary, (c) => c.charCodeAt(0))
 }
 
+function asArrayBuffer(bytes: ArrayBuffer | Uint8Array): ArrayBuffer {
+  if (bytes instanceof ArrayBuffer) return bytes
+  return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer
+}
+
 export async function registerOwnPublicKey(): Promise<void> {
   const keyPair = await getIdentity()
   const publicKeyJwk = await crypto.subtle.exportKey('jwk', keyPair.publicKey)
@@ -75,7 +80,7 @@ export async function getPublicKey(userId: string): Promise<{ id: string; public
 export async function encryptTextForRecipients(text: string, recipients: Array<{ userId: string; keyId: string; publicKeyJwk: JsonWebKey }>): Promise<Pick<Message, 'encrypted_content' | 'nonce'> & { encryptionVersion: 2; encryptionAlgorithm: 'RSA-OAEP-256'; keyEnvelopes: Array<{ recipientUserId: string; keyId: string; encryptedMessageKey: string }> }> {
   const contentKey = await crypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, true, ['encrypt', 'decrypt'])
   const iv = crypto.getRandomValues(new Uint8Array(12))
-  const encrypted = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, contentKey, new TextEncoder().encode(text))
+  const encrypted = await crypto.subtle.encrypt({ name: 'AES-GCM', iv: asArrayBuffer(iv) }, contentKey, asArrayBuffer(new TextEncoder().encode(text)))
   const rawKey = await crypto.subtle.exportKey('raw', contentKey)
 
   const keyEnvelopes = [] as Array<{ recipientUserId: string; keyId: string; encryptedMessageKey: string }>
@@ -83,7 +88,7 @@ export async function encryptTextForRecipients(text: string, recipients: Array<{
     const publicKey = await crypto.subtle.importKey(
       'jwk', recipient.publicKeyJwk, { name: 'RSA-OAEP', hash: 'SHA-256' }, false, ['encrypt']
     )
-    const wrapped = await crypto.subtle.encrypt({ name: 'RSA-OAEP' }, publicKey, rawKey)
+    const wrapped = await crypto.subtle.encrypt({ name: 'RSA-OAEP' }, publicKey, asArrayBuffer(rawKey))
     keyEnvelopes.push({ recipientUserId: recipient.userId, keyId: recipient.keyId, encryptedMessageKey: bytesToBase64(wrapped) })
   }
 
@@ -102,9 +107,9 @@ export async function decryptTextMessage(message: Message): Promise<string | nul
   if (!envelope) return null
   const keyPair = await getIdentity()
   try {
-    const rawKey = await crypto.subtle.decrypt({ name: 'RSA-OAEP' }, keyPair.privateKey, base64ToBytes(envelope.encryptedMessageKey))
+    const rawKey = await crypto.subtle.decrypt({ name: 'RSA-OAEP' }, keyPair.privateKey, asArrayBuffer(base64ToBytes(envelope.encryptedMessageKey)))
     const contentKey = await crypto.subtle.importKey('raw', rawKey, { name: 'AES-GCM' }, false, ['decrypt'])
-    const plaintext = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: base64ToBytes(message.nonce) }, contentKey, base64ToBytes(message.encrypted_content))
+    const plaintext = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: asArrayBuffer(base64ToBytes(message.nonce)) }, contentKey, asArrayBuffer(base64ToBytes(message.encrypted_content)))
     return new TextDecoder().decode(plaintext)
   } catch {
     return null
@@ -112,3 +117,16 @@ export async function decryptTextMessage(message: Message): Promise<string | nul
 }
 
 export { bytesToBase64 }
+export interface ConversationE2EMember {
+  userId: string
+  keyId: string | null
+  publicKeyJwk: JsonWebKey | null
+  keyVersion?: number | null
+}
+
+export async function getConversationE2EMembers(conversationId: string): Promise<ConversationE2EMember[]> {
+  const res = await api.get<ApiEnvelope<ConversationE2EMember[]>>(
+    `/messages/conversations/${encodeURIComponent(conversationId)}/e2e-members`,
+  )
+  return res.data
+}
