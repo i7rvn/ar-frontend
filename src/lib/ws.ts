@@ -10,7 +10,7 @@ function stringField(payload: JsonObject, key: string): string | undefined {
   return typeof payload[key] === 'string' ? payload[key] as string : undefined
 }
 
-function isMessagePayload(payload: JsonObject): payload is unknown as Message {
+function isMessagePayload(payload: JsonObject): payload is Message {
   return Boolean(
     stringField(payload, 'id') &&
     stringField(payload, 'conversation_id') &&
