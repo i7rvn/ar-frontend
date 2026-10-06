@@ -3,7 +3,8 @@ import { config } from '@/lib/config'
 import { tokens } from '@/lib/tokens'
 import type { Message } from '@/types/api'
 
-type ServerEvent = { type: string; payload?: any }
+type JsonObject = Record<string, unknown>
+type ServerEvent = { type: string; payload?: JsonObject }
 type Status = 'connecting' | 'open' | 'closed'
 
 function websocketUrl(token: string): string {
@@ -82,7 +83,7 @@ export function createRealtimeSocket() {
 export interface RealtimeHandlers {
   onMessage?: (message: Message) => void
   onMessageEdited?: (message: Message) => void
-  onMessageReaction?: (payload: any) => void
+  onMessageReaction?: (payload: JsonObject) => void
   onMessagePinned?: (message: Message) => void
   onMessageUnpinned?: (message: Message) => void
   onTyping?: (payload: { type: 'typing:start' | 'typing:stop'; userId: string; conversationId: string }) => void
