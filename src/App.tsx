@@ -10,6 +10,7 @@ import { SearchPage, NotificationsPage, MessagesPage, CommunitiesPage, Community
 
 const FeedPage = lazy(() => import('@/features/feed/FeedPage').then((m) => ({ default: m.FeedPage })))
 const LoginPage = lazy(() => import('@/features/auth/LoginPage').then((m) => ({ default: m.LoginPage })))
+const TwoFactorLoginPage = lazy(() => import('@/features/auth/TwoFactorLoginPage').then((m) => ({ default: m.TwoFactorLoginPage })))
 const RegisterPage = lazy(() => import('@/features/auth/RegisterPage').then((m) => ({ default: m.RegisterPage })))
 
 const PageLoader = () => <div className='grid min-h-[40dvh] place-items-center text-brand'><Spinner className='size-6' /></div>
@@ -21,6 +22,7 @@ export default function App() {
       <Routes>
         <Route element={<GuestOnly />}>
           <Route path='/login' element={<LoginPage />} />
+          <Route path='/login/2fa' element={<TwoFactorLoginPage />} />
           <Route path='/register' element={<RegisterPage />} />
         </Route>
         <Route element={<RequireAuth />}>
