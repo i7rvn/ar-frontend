@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/Input'
 import { Modal } from '@/components/ui/Modal'
 import { Spinner } from '@/components/ui/Spinner'
 import { api } from '@/lib/api'
-import { getPublicKey, registerOwnPublicKey, encryptTextForRecipients, decryptTextMessage } from '@/lib/e2e'
+import { getPublicKey, registerOwnPublicKey, getConversationE2EMembers, encryptTextForRecipients, decryptTextMessage } from '@/lib/e2e'
 import { formatCount, relativeTime } from '@/lib/format'
 import { useT } from '@/i18n/useT'
 import { cn } from '@/lib/cn'
@@ -65,16 +65,24 @@ export function MessagesPage() {
   useEffect(() => { void registerOwnPublicKey().catch((e: Error) => toast(e.message, 'error')) }, [toast])
   const send = useMutation({ mutationFn: async () => {
     if (!conversationId || !user || !text.trim()) throw new Error('الرسالة فارغة')
-    if (current?.type !== 'direct' || !current.other_user_id) throw new Error('الإرسال المشفّر للمجموعات يحتاج قائمة مفاتيح أعضاء المجموعة.')
-    const ownKey = await getPublicKey(user.id); const peerKey = await getPublicKey(current.other_user_id)
-    if (!ownKey || !peerKey) throw new Error('لازم الطرفان يسجلوا مفاتيح E2E قبل الإرسال')
-    const encrypted = await encryptTextForRecipients(text.trim(), [{ userId: user.id, keyId: ownKey.id, publicKeyJwk: ownKey.publicKeyJwk }, { userId: current.other_user_id, keyId: peerKey.id, publicKeyJwk: peerKey.publicKeyJwk }])
+    const members = await getConversationE2EMembers(conversationId)
+    if (members.some((member) => !member.keyId || !member.publicKeyJwk)) {
+      throw new Error('بعض أعضاء المحادثة لم يسجلوا مفتاح E2E بعد')
+    }
+    const encrypted = await encryptTextForRecipients(
+      text.trim(),
+      members.map((member) => ({
+        userId: member.userId,
+        keyId: member.keyId!,
+        publicKeyJwk: member.publicKeyJwk!,
+      })),
+    )
     return api.post('/messages/send', { conversationId, ...encrypted, msgType: 'text' })
   }, onSuccess: () => { setText(''); void messages.refetch(); void convs.refetch() }, onError: (e: Error) => toast(e.message, 'error') })
   return <section className='min-h-[calc(100dvh-1px)]'>
     <PageTitle icon={MessageCircle} title='الرسائل' body='محادثاتك الخاصة مع تشفير E2E من جهة العميل' />
     <div className='grid min-h-[70dvh] md:grid-cols-[17rem_1fr]'>
-      <aside className='border-e border-line'>{conversations.map((c) => { const cid = c.conversation_id ?? c.id!; return <button type='button' key={cid} onClick={() => nav(`/messages/${cid}`)} className={cn('flex w-full items-center gap-3 border-b border-line p-3 text-start hover:bg-brand-soft', cid === conversationId && 'bg-brand-soft')}><div className='grid size-9 place-items-center rounded-full bg-surface text-brand'>{c.type === 'group' ? <Users size={18} /> : <MessageCircle size={18} />}</div><div className='min-w-0'><p className='truncate font-semibold'>{c.name || 'محادثة مباشرة'}</p><p className='truncate text-xs text-muted'>{c.last_msg_text || 'لا توجد رسائل بعد'}</p></div>{(c.unread_count ?? 0) > 0 && <span className='ms-auto rounded-full bg-brand px-2 py-0.5 text-xs text-on-brand'>{c.unread_count}</span>}</button> })}</aside>
+      <aside className='border-e border-line'>{conversations.map((c) => { const cid = c.conversation_id ?? c.id!; return <button type='button' key={cid} onClick={() => nav(`/messages/${cid}`)} className={cn('flex w-full items-center gap-3 border-b border-line p-3 text-start hover:bg-brand-soft', cid === conversationId && 'bg-brand-soft')}><div className='grid size-9 place-items-center rounded-full bg-surface text-brand'>{c.type === 'group' ? <Users size={18} /> : <MessageCircle size={18} />}</div><div className='min-w-0'><p className='truncate font-semibold'>{c.display_name || c.name || 'محادثة مباشرة'}</p><p className='truncate text-xs text-muted'>{c.last_msg_text || 'لا توجد رسائل بعد'}</p></div>{(c.unread_count ?? 0) > 0 && <span className='ms-auto rounded-full bg-brand px-2 py-0.5 text-xs text-on-brand'>{c.unread_count}</span>}</button> })}</aside>
       <div className='flex min-h-[60dvh] flex-col'>{!conversationId ? <div className='grid flex-1 place-items-center p-8 text-center text-muted'>اختار محادثة للبدء.</div> : <><div className='flex-1 space-y-2 overflow-y-auto p-4'>{messages.isPending ? <Spinner /> : messages.data?.data.map((m) => <MessageBubble key={m.id} message={m} currentUserId={user?.id} onEdit={() => setEditing(m)} />)}</div><form onSubmit={(e) => { e.preventDefault(); send.mutate() }} className='border-t border-line p-3'><div className='flex gap-2'><input value={text} onChange={(e) => setText(e.target.value)} placeholder='اكتب رسالة مشفرة...' className='min-w-0 flex-1 rounded-control border border-line bg-transparent px-3 py-2 outline-none focus:border-brand' /><Button type='submit' loading={send.isPending}>إرسال</Button></div></form></>}</div>
     </div>
     <EditMessageModal message={editing} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); void messages.refetch() }} />
@@ -94,10 +102,23 @@ function EditMessageModal({ message, onClose, onSaved }: { message: Message | nu
   useEffect(() => { if (message) decryptTextMessage(message).then((v) => setText(v ?? '')) }, [message])
   const mutation = useMutation({ mutationFn: async () => {
     if (!message || !text.trim()) throw new Error('المحتوى فارغ')
-    const identity = await getPublicKey(message.sender_id); if (!identity) throw new Error('مفتاح E2E غير موجود')
-    const ownIdentity = await getPublicKey(useAuthStore.getState().user!.id); if (!ownIdentity) throw new Error('مفتاح E2E غير موجود')
-    const encrypted = await encryptTextForRecipients(text.trim(), [{ userId: useAuthStore.getState().user!.id, keyId: ownIdentity.id, publicKeyJwk: ownIdentity.publicKeyJwk }, { userId: message.sender_id, keyId: identity.id, publicKeyJwk: identity.publicKeyJwk }])
-    return api.patch(`/messages/${message.id}`, { encryptedContent: encrypted.encrypted_content, nonce: encrypted.nonce })
+    const members = await getConversationE2EMembers(message.conversation_id)
+    if (members.some((member) => !member.keyId || !member.publicKeyJwk)) {
+      throw new Error('بعض أعضاء المحادثة لم يسجلوا مفتاح E2E بعد')
+    }
+    const encrypted = await encryptTextForRecipients(
+      text.trim(),
+      members.map((member) => ({
+        userId: member.userId,
+        keyId: member.keyId!,
+        publicKeyJwk: member.publicKeyJwk!,
+      })),
+    )
+    return api.patch(`/messages/${message.id}`, {
+      encryptedContent: encrypted.encrypted_content,
+      nonce: encrypted.nonce,
+      keyEnvelopes: encrypted.keyEnvelopes,
+    })
   }, onSuccess: onSaved })
   return <Modal open={Boolean(message)} onClose={onClose} title='تعديل الرسالة'><textarea value={text} onChange={(e) => setText(e.target.value)} rows={5} className='w-full rounded-control border border-line bg-transparent p-3 outline-none focus:border-brand' /><Button className='mt-3' onClick={() => mutation.mutate()} loading={mutation.isPending}>حفظ التعديل</Button></Modal>
 }
