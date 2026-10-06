@@ -1,0 +1,159 @@
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { config } from '@/lib/config'
+import { tokens } from '@/lib/tokens'
+import type { Message } from '@/types/api'
+
+type ServerEvent = { type: string; payload?: any }
+type Status = 'connecting' | 'open' | 'closed'
+
+function websocketUrl(token: string): string {
+  const api = new URL(config.apiUrl)
+  return `${api.protocol === 'https:' ? 'wss:' : 'ws:'}//${api.host}/ws?token=${encodeURIComponent(token)}`
+}
+
+export function createRealtimeSocket() {
+  let socket: WebSocket | null = null
+  let stopped = false
+  let reconnectTimer: number | undefined
+  let heartbeatTimer: number | undefined
+  let reconnectAttempt = 0
+  const listeners = new Set<(event: ServerEvent) => void>()
+
+  const clearTimers = () => {
+    if (reconnectTimer !== undefined) window.clearTimeout(reconnectTimer)
+    if (heartbeatTimer !== undefined) window.clearInterval(heartbeatTimer)
+    reconnectTimer = undefined
+    heartbeatTimer = undefined
+  }
+
+  const connect = () => {
+    const token = tokens.getAccess()
+    if (stopped || !token) return
+    clearTimers()
+    socket = new WebSocket(websocketUrl(token))
+    socket.addEventListener('open', () => {
+      reconnectAttempt = 0
+      heartbeatTimer = window.setInterval(() => {
+        send('ping', {})
+      }, 25_000)
+      listeners.forEach((listener) => listener({ type: '__open__' }))
+    })
+    socket.addEventListener('message', (event) => {
+      try { listeners.forEach((listener) => listener(JSON.parse(String(event.data)) as ServerEvent)) } catch {}
+    })
+    socket.addEventListener('close', (event) => {
+      clearTimers()
+      listeners.forEach((listener) => listener({ type: '__close__', payload: { code: event.code } }))
+      if (!stopped) scheduleReconnect()
+    })
+    socket.addEventListener('error', () => {})
+  }
+
+  const scheduleReconnect = () => {
+    const delay = Math.min(30_000, 1_000 * 2 ** reconnectAttempt)
+    reconnectAttempt += 1
+    reconnectTimer = window.setTimeout(connect, delay)
+  }
+
+  const send = (type: string, payload: unknown) => {
+    if (socket?.readyState !== WebSocket.OPEN) return false
+    socket.send(JSON.stringify({ type, payload }))
+    return true
+  }
+
+  const subscribe = (listener: (event: ServerEvent) => void) => {
+    listeners.add(listener)
+    return () => listeners.delete(listener)
+  }
+
+  connect()
+  return {
+    subscribe,
+    send,
+    stop: () => { stopped = true; clearTimers(); socket?.close(1000, 'client stop'); socket = null },
+    get status(): Status {
+      if (socket?.readyState === WebSocket.OPEN) return 'open'
+      if (socket?.readyState === WebSocket.CONNECTING) return 'connecting'
+      return 'closed'
+    },
+  }
+}
+
+export interface RealtimeHandlers {
+  onMessage?: (message: Message) => void
+  onMessageEdited?: (message: Message) => void
+  onMessageReaction?: (payload: any) => void
+  onMessagePinned?: (message: Message) => void
+  onMessageUnpinned?: (message: Message) => void
+  onTyping?: (payload: { type: 'typing:start' | 'typing:stop'; userId: string; conversationId: string }) => void
+  onRead?: (payload: { userId: string; conversationId: string }) => void
+  onDelivered?: (payload: { userId: string; messageId: string; conversationId: string }) => void
+}
+
+export function useRealtimeConversation(conversationId: string | undefined, handlers: RealtimeHandlers) {
+  const socketRef = useRef<ReturnType<typeof createRealtimeSocket> | null>(null)
+  const handlersRef = useRef(handlers)
+  handlersRef.current = handlers
+  const [status, setStatus] = useState<Status>('closed')
+  const [typingUserIds, setTypingUserIds] = useState<string[]>([])
+
+  useEffect(() => {
+    if (!conversationId || !tokens.getAccess()) return
+    const client = createRealtimeSocket()
+    socketRef.current = client
+    const unsubscribe = client.subscribe((event) => {
+      if (event.type === '__open__') {
+        setStatus('open')
+        client.send('join:room', { conversationId })
+        client.send('message:read', { conversationId })
+        return
+      }
+      if (event.type === '__close__') {
+        setStatus('closed')
+        setTypingUserIds([])
+        return
+      }
+      if (event.type === 'room:revoked') {
+        setStatus('closed')
+        return
+      }
+      const payload = event.payload
+      if (!payload) return
+      if (event.type === 'message:new' && payload.conversation_id === conversationId) {
+        handlersRef.current.onMessage?.(payload as Message)
+        if (payload.sender_id) client.send('message:delivered', { conversationId, messageId: payload.id })
+      } else if (event.type === 'message:edited' && payload.conversation_id === conversationId) {
+        handlersRef.current.onMessageEdited?.(payload as Message)
+      } else if (event.type === 'message:reaction') {
+        handlersRef.current.onMessageReaction?.(payload)
+      } else if (event.type === 'message:pinned' && payload.conversation_id === conversationId) {
+        handlersRef.current.onMessagePinned?.(payload as Message)
+      } else if (event.type === 'message:unpinned' && payload.conversation_id === conversationId) {
+        handlersRef.current.onMessageUnpinned?.(payload as Message)
+      } else if ((event.type === 'typing:start' || event.type === 'typing:stop') && payload.conversationId === conversationId) {
+        handlersRef.current.onTyping?.({ type: event.type, userId: payload.userId, conversationId })
+        setTypingUserIds((ids) => event.type === 'typing:start'
+          ? Array.from(new Set(ids.concat(payload.userId)))
+          : ids.filter((id) => id !== payload.userId))
+      } else if (event.type === 'message:read' && payload.conversationId === conversationId) {
+        handlersRef.current.onRead?.(payload)
+      } else if (event.type === 'message:delivered' && payload.conversationId === conversationId) {
+        handlersRef.current.onDelivered?.(payload)
+      }
+    })
+    setStatus(client.status)
+    return () => { unsubscribe(); client.send('leave:room', { conversationId }); client.stop(); socketRef.current = null }
+  }, [conversationId])
+
+  const sendTyping = useCallback((active: boolean) => {
+    if (!conversationId) return false
+    return socketRef.current?.send(active ? 'typing:start' : 'typing:stop', { conversationId }) ?? false
+  }, [conversationId])
+
+  const markRead = useCallback(() => {
+    if (!conversationId) return false
+    return socketRef.current?.send('message:read', { conversationId }) ?? false
+  }, [conversationId])
+
+  return { status, typingUserIds, sendTyping, markRead }
+}
