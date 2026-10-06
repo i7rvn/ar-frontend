@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api'
+import { tokens } from '@/lib/tokens'
 import { useAuthStore } from '@/stores/auth'
 import type { ApiEnvelope, User } from '@/types/api'
 
@@ -15,7 +16,6 @@ export function useBootstrapSession() {
     api
       .post<ApiEnvelope<{ accessToken: string }>>('/auth/refresh-token', {}, { auth: false })
       .then((refresh) => {
-        const { tokens } = require('@/lib/tokens') as typeof import('@/lib/tokens')
         tokens.set(refresh.data.accessToken)
         return api.get<ApiEnvelope<{ user: User }>>('/auth/me', { signal: controller.signal })
       })
