@@ -10,6 +10,7 @@ import { Spinner } from '@/components/ui/Spinner'
 import { api } from '@/lib/api'
 import { registerOwnPublicKey, getConversationE2EMembers, encryptTextForRecipients, decryptTextMessage } from '@/lib/e2e'
 import { relativeTime } from '@/lib/format'
+import { useRealtimeConversation } from '@/lib/ws'
 import { useT } from '@/i18n/useT'
 import { cn } from '@/lib/cn'
 import { useAuthStore } from '@/stores/auth'
@@ -58,11 +59,63 @@ function useConversations() { return useQuery({ queryKey: ['conversations'], que
 
 export function MessagesPage() {
   const { id: activeId } = useParams(); const nav = useNavigate(); const user = useAuthStore((s) => s.user); const toast = useUiStore((s) => s.toast)
-  const convs = useConversations(); const [text, setText] = useState(''); const [editing, setEditing] = useState<Message | null>(null);
-  const conversations = convs.data?.data ?? []; const current = conversations.find((c) => (c.conversation_id ?? c.id) === activeId) ?? conversations[0]; const conversationId = current ? (current.conversation_id ?? current.id)! : undefined
-  const messages = useQuery({ queryKey: ['messages', conversationId], enabled: Boolean(conversationId), queryFn: () => api.get<ApiEnvelope<Message[]>>(`/messages/conversations/${conversationId}/messages?limit=50`) })
+  const convs = useConversations()
+  const queryClient = useQueryClient()
+  const [text, setText] = useState('')
+  const [editing, setEditing] = useState<Message | null>(null)
+  const conversations = convs.data?.data ?? []
+  const current = conversations.find((c) => (c.conversation_id ?? c.id) === activeId) ?? conversations[0]
+  const conversationId = current ? (current.conversation_id ?? current.id)! : undefined
+  const messages = useQuery({
+    queryKey: ['messages', conversationId],
+    enabled: Boolean(conversationId),
+    queryFn: () => api.get<ApiEnvelope<Message[]>>(`/messages/conversations/${conversationId}/messages?limit=50`),
+  })
+
+  const updateMessage = (message: Message) => {
+    queryClient.setQueryData<ApiEnvelope<Message[]>>(['messages', conversationId], (old) => {
+      if (!old) return old
+      const found = old.data.findIndex((item) => item.id === message.id)
+      if (found < 0) return { ...old, data: [...old.data, message] }
+      const next = [...old.data]
+      next[found] = { ...next[found], ...message }
+      return { ...old, data: next }
+    })
+  }
+
+  const updatePinned = (message: Message) => updateMessage(message)
+  const realtime = useRealtimeConversation(conversationId, {
+    onMessage: (message) => {
+      updateMessage(message)
+      void queryClient.invalidateQueries({ queryKey: ['conversations'] })
+    },
+    onMessageEdited: updateMessage,
+    onMessageReaction: () => {
+      void queryClient.invalidateQueries({ queryKey: ['messages', conversationId] })
+    },
+    onMessagePinned: updatePinned,
+    onMessageUnpinned: updatePinned,
+    onDelivered: () => {},
+    onRead: () => {},
+  })
+
   useEffect(() => { if (!conversationId && conversations[0]) nav(`/messages/${conversations[0].conversation_id ?? conversations[0].id}`, { replace: true }) }, [conversationId, conversations, nav])
   useEffect(() => { void registerOwnPublicKey().catch((e: Error) => toast(e.message, 'error')) }, [toast])
+
+  const typingTimer = useRef<number | null>(null)
+  useEffect(() => () => {
+    if (typingTimer.current !== null) window.clearTimeout(typingTimer.current)
+  }, [])
+
+  const handleTyping = (value: string) => {
+    setText(value)
+    realtime.sendTyping(Boolean(value.trim()))
+    if (typingTimer.current !== null) window.clearTimeout(typingTimer.current)
+    if (value.trim()) {
+      typingTimer.current = window.setTimeout(() => realtime.sendTyping(false), 1200)
+    }
+  }
+
   const send = useMutation({ mutationFn: async () => {
     if (!conversationId || !user || !text.trim()) throw new Error('الرسالة فارغة')
     const members = await getConversationE2EMembers(conversationId)
@@ -81,9 +134,10 @@ export function MessagesPage() {
   }, onSuccess: () => { setText(''); void messages.refetch(); void convs.refetch() }, onError: (e: Error) => toast(e.message, 'error') })
   return <section className='min-h-[calc(100dvh-1px)]'>
     <PageTitle icon={MessageCircle} title='الرسائل' body='محادثاتك الخاصة مع تشفير E2E من جهة العميل' />
+    <div className='px-5 py-2 text-[11px] text-muted'>{realtime.status === 'open' ? 'متصل لحظياً' : 'جاري الاتصال…'}</div>
     <div className='grid min-h-[70dvh] md:grid-cols-[17rem_1fr]'>
       <aside className='border-e border-line'>{conversations.map((c) => { const cid = c.conversation_id ?? c.id!; return <button type='button' key={cid} onClick={() => nav(`/messages/${cid}`)} className={cn('flex w-full items-center gap-3 border-b border-line p-3 text-start hover:bg-brand-soft', cid === conversationId && 'bg-brand-soft')}><div className='grid size-9 place-items-center rounded-full bg-surface text-brand'>{c.type === 'group' ? <Users size={18} /> : <MessageCircle size={18} />}</div><div className='min-w-0'><p className='truncate font-semibold'>{c.display_name || c.name || 'محادثة مباشرة'}</p><p className='truncate text-xs text-muted'>{c.last_msg_text || 'لا توجد رسائل بعد'}</p></div>{(c.unread_count ?? 0) > 0 && <span className='ms-auto rounded-full bg-brand px-2 py-0.5 text-xs text-on-brand'>{c.unread_count}</span>}</button> })}</aside>
-      <div className='flex min-h-[60dvh] flex-col'>{!conversationId ? <div className='grid flex-1 place-items-center p-8 text-center text-muted'>اختار محادثة للبدء.</div> : <><div className='flex-1 space-y-2 overflow-y-auto p-4'>{messages.isPending ? <Spinner /> : messages.data?.data.map((m) => <MessageBubble key={m.id} message={m} currentUserId={user?.id} onEdit={() => setEditing(m)} />)}</div><form onSubmit={(e) => { e.preventDefault(); send.mutate() }} className='border-t border-line p-3'><div className='flex gap-2'><input value={text} onChange={(e) => setText(e.target.value)} placeholder='اكتب رسالة مشفرة...' className='min-w-0 flex-1 rounded-control border border-line bg-transparent px-3 py-2 outline-none focus:border-brand' /><Button type='submit' loading={send.isPending}>إرسال</Button></div></form></>}</div>
+      <div className='flex min-h-[60dvh] flex-col'>{!conversationId ? <div className='grid flex-1 place-items-center p-8 text-center text-muted'>اختار محادثة للبدء.</div> : <><div className='flex-1 space-y-2 overflow-y-auto p-4'>{messages.isPending ? <Spinner /> : messages.data?.data.map((m) => <MessageBubble key={m.id} message={m} currentUserId={user?.id} onEdit={() => setEditing(m)} />)}{realtime.typingUserIds.length > 0 && <div className='text-xs text-muted'>جارٍ الكتابة…</div>}</div><form onSubmit={(e) => { e.preventDefault(); send.mutate() }} className='border-t border-line p-3'><div className='flex gap-2'><input value={text} onChange={(e) => handleTyping(e.target.value)} placeholder='اكتب رسالة مشفرة...' className='min-w-0 flex-1 rounded-control border border-line bg-transparent px-3 py-2 outline-none focus:border-brand' /><Button type='submit' loading={send.isPending}>إرسال</Button></div></form></>}</div>
     </div>
     <EditMessageModal message={editing} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); void messages.refetch() }} />
   </section>
