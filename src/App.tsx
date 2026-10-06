@@ -6,11 +6,11 @@ import { AppShell } from '@/components/layout/AppShell'
 import { GuestOnly, RequireAuth } from '@/components/layout/RouteGuards'
 import { useBootstrapSession } from '@/features/auth/useSession'
 import { NotFound } from '@/pages/NotFound'
+import { SearchPage, NotificationsPage, MessagesPage, CommunitiesPage, CommunityPage, SettingsPage, StatsPage, ProfilePage, PostPage, HashtagPage, StoriesPage } from '@/pages/WorkspacePages'
 
 const FeedPage = lazy(() => import('@/features/feed/FeedPage').then((m) => ({ default: m.FeedPage })))
 const LoginPage = lazy(() => import('@/features/auth/LoginPage').then((m) => ({ default: m.LoginPage })))
 const RegisterPage = lazy(() => import('@/features/auth/RegisterPage').then((m) => ({ default: m.RegisterPage })))
-const { SearchPage, NotificationsPage, MessagesPage, CommunitiesPage, CommunityPage, SettingsPage, StatsPage, ProfilePage, PostPage, HashtagPage, StoriesPage } = await import('@/pages/WorkspacePages')
 
 const PageLoader = () => <div className='grid min-h-[40dvh] place-items-center text-brand'><Spinner className='size-6' /></div>
 
