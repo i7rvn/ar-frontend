@@ -66,7 +66,7 @@ export function AppShell() {
             type="button"
             onClick={() => setComposeOpen(true)}
             aria-label={t('nav_post')}
-            className="press mt-3 grid h-12 w-12 place-items-center rounded-full bg-brand text-on-brand hover:brightness-110 xl:w-full xl:text-base xl:font-bold"
+            className="press mt-3 grid h-12 w-12 place-items-center rounded-full glass-fab xl:w-full xl:text-base xl:font-bold"
           >
             <PenSquare size={22} className="xl:hidden" aria-hidden="true" />
             <span className="hidden xl:inline">{t('nav_post')}</span>
@@ -132,7 +132,7 @@ export function AppShell() {
         type="button"
         onClick={() => setComposeOpen(true)}
         aria-label={t('nav_post')}
-        className="press fixed bottom-[calc(4.5rem+env(safe-area-inset-bottom)+0.75rem)] end-4 z-30 grid size-14 place-items-center rounded-full bg-brand text-on-brand shadow-float md:hidden"
+        className="press fixed bottom-[calc(4.5rem+env(safe-area-inset-bottom)+0.75rem)] end-4 z-30 grid size-14 place-items-center rounded-full glass-fab md:hidden"
       >
         <PenSquare size={24} aria-hidden="true" />
       </button>
