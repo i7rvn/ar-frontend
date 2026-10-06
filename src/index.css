@@ -11,40 +11,40 @@
    ───────────────────────────────────────────────────────────────── */
 :root,
 [data-theme="light"] {
-  --bg: #f4f6f8;
+  --bg: #ffffff;
   --surface: #ffffff;
-  --raised: #ffffff;
-  --fg: #0f1e2e;
-  --muted: #4b5b6b;
-  --subtle: #5d6c7b; /* 4.97:1 على bg، 5.39:1 على surface (WCAG AA) */
-  --line: rgb(15 30 46 / 0.11);
-  --brand: #0b7a47;
+  --raised: #f7f9fa;
+  --fg: #0f1419;
+  --muted: #536471;
+  --subtle: #536471;
+  --line: rgb(15 20 25 / 0.12);
+  --brand: #0f1419;
   --on-brand: #ffffff;
-  --brand-soft: rgb(11 122 71 / 0.1);
-  --sand: #8a5f0c;
-  --sand-soft: rgb(138 95 12 / 0.12);
+  --brand-soft: rgb(15 20 25 / 0.08);
+  --sand: #536471;
+  --sand-soft: rgb(83 100 113 / 0.12);
   --danger: #c4102f;
   --danger-soft: rgb(196 16 47 / 0.1);
-  --glass: rgb(244 246 248 / 0.78);
+  --glass: rgb(255 255 255 / 0.78);
   color-scheme: light;
 }
 
 [data-theme="dark"] {
-  --bg: #0b1622;
-  --surface: #101f2e;
-  --raised: #162838;
-  --fg: #eaf0f6;
-  --muted: #93a5b8;
-  --subtle: #7f92a6; /* ≥4.71:1 على كل الأسطح الداكنة (WCAG AA) */
-  --line: rgb(234 240 246 / 0.1);
-  --brand: #2bc47a;
-  --on-brand: #052313;
-  --brand-soft: rgb(43 196 122 / 0.14);
-  --sand: #e7c37a;
-  --sand-soft: rgb(231 195 122 / 0.14);
+  --bg: #000000;
+  --surface: #16181c;
+  --raised: #202327;
+  --fg: #e7e9ea;
+  --muted: #8b98a5;
+  --subtle: #aab8c2;
+  --line: rgb(231 233 234 / 0.12);
+  --brand: #eff3f4;
+  --on-brand: #0f1419;
+  --brand-soft: rgb(239 243 244 / 0.1);
+  --sand: #aab8c2;
+  --sand-soft: rgb(170 184 194 / 0.14);
   --danger: #ff6b83;
   --danger-soft: rgb(255 107 131 / 0.14);
-  --glass: rgb(11 22 34 / 0.72);
+  --glass: rgb(0 0 0 / 0.72);
   color-scheme: dark;
 }
 
@@ -126,6 +126,31 @@
     background: var(--glass);
     -webkit-backdrop-filter: blur(14px) saturate(1.4);
     backdrop-filter: blur(14px) saturate(1.4);
+  }
+
+  .glass-fab {
+    border: 1px solid rgb(69 174 199 / 0.42);
+    background: linear-gradient(145deg, rgb(222 249 255 / 0.94), rgb(139 223 244 / 0.72));
+    color: #103844;
+    box-shadow: 0 12px 30px rgb(24 126 154 / 0.24), inset 0 1px 0 rgb(255 255 255 / 0.82);
+    -webkit-backdrop-filter: blur(18px) saturate(1.65);
+    backdrop-filter: blur(18px) saturate(1.65);
+  }
+
+  [data-theme="dark"] .glass-fab {
+    border-color: rgb(137 225 240 / 0.34);
+    background: linear-gradient(145deg, rgb(54 154 178 / 0.72), rgb(24 96 117 / 0.72));
+    color: #effcff;
+    box-shadow: 0 12px 32px rgb(0 0 0 / 0.46), inset 0 1px 0 rgb(220 250 255 / 0.26);
+  }
+
+  .glass-fab:hover:not(:disabled) {
+    filter: brightness(1.05);
+    border-color: rgb(30 139 165 / 0.62);
+  }
+
+  [data-theme="dark"] .glass-fab:hover:not(:disabled) {
+    border-color: rgb(174 241 250 / 0.56);
   }
 
   /* الشعور بالضغط: transform فقط (بلا reflow) */
