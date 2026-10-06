@@ -5,6 +5,10 @@ import type { Message } from '@/types/api'
 
 type JsonObject = Record<string, unknown>
 type ServerEvent = { type: string; payload?: JsonObject }
+
+function stringField(payload: JsonObject, key: string): string | undefined {
+  return typeof payload[key] === 'string' ? payload[key] as string : undefined
+}
 type Status = 'connecting' | 'open' | 'closed'
 
 function websocketUrl(token: string): string {
@@ -45,7 +49,7 @@ export function createRealtimeSocket() {
     socket.addEventListener('close', (event) => {
       clearTimers()
       listeners.forEach((listener) => listener({ type: '__close__', payload: { code: event.code } }))
-      if (!stopped) scheduleReconnect()
+      if (!stopped && event.code !== 4001) scheduleReconnect()
     })
     socket.addEventListener('error', () => {})
   }
@@ -120,26 +124,30 @@ export function useRealtimeConversation(conversationId: string | undefined, hand
       }
       const payload = event.payload
       if (!payload) return
-      if (event.type === 'message:new' && payload.conversation_id === conversationId) {
+      const payloadConversationId = stringField(payload, 'conversation_id')
+      const payloadConversationIdCamel = stringField(payload, 'conversationId')
+      const payloadUserId = stringField(payload, 'userId')
+      const payloadMessageId = stringField(payload, 'messageId') ?? stringField(payload, 'id')
+      if (event.type === 'message:new' && payloadConversationId === conversationId) {
         handlersRef.current.onMessage?.(payload as Message)
-        if (payload.sender_id) client.send('message:delivered', { conversationId, messageId: payload.id })
-      } else if (event.type === 'message:edited' && payload.conversation_id === conversationId) {
+        if (payloadMessageId && stringField(payload, 'sender_id')) client.send('message:delivered', { conversationId, messageId: payloadMessageId })
+      } else if (event.type === 'message:edited' && payloadConversationId === conversationId) {
         handlersRef.current.onMessageEdited?.(payload as Message)
       } else if (event.type === 'message:reaction') {
         handlersRef.current.onMessageReaction?.(payload)
-      } else if (event.type === 'message:pinned' && payload.conversation_id === conversationId) {
+      } else if (event.type === 'message:pinned' && payloadConversationId === conversationId) {
         handlersRef.current.onMessagePinned?.(payload as Message)
-      } else if (event.type === 'message:unpinned' && payload.conversation_id === conversationId) {
+      } else if (event.type === 'message:unpinned' && payloadConversationId === conversationId) {
         handlersRef.current.onMessageUnpinned?.(payload as Message)
-      } else if ((event.type === 'typing:start' || event.type === 'typing:stop') && payload.conversationId === conversationId) {
-        handlersRef.current.onTyping?.({ type: event.type, userId: payload.userId, conversationId })
+      } else if ((event.type === 'typing:start' || event.type === 'typing:stop') && payloadConversationIdCamel === conversationId && payloadUserId) {
+        handlersRef.current.onTyping?.({ type: event.type, userId: payloadUserId, conversationId })
         setTypingUserIds((ids) => event.type === 'typing:start'
-          ? Array.from(new Set(ids.concat(payload.userId)))
-          : ids.filter((id) => id !== payload.userId))
-      } else if (event.type === 'message:read' && payload.conversationId === conversationId) {
-        handlersRef.current.onRead?.(payload)
-      } else if (event.type === 'message:delivered' && payload.conversationId === conversationId) {
-        handlersRef.current.onDelivered?.(payload)
+          ? Array.from(new Set(ids.concat(payloadUserId)))
+          : ids.filter((id) => id !== payloadUserId))
+      } else if (event.type === 'message:read' && payloadConversationIdCamel === conversationId && payloadUserId) {
+        handlersRef.current.onRead?.({ userId: payloadUserId, conversationId })
+      } else if (event.type === 'message:delivered' && payloadConversationIdCamel === conversationId && payloadUserId && payloadMessageId) {
+        handlersRef.current.onDelivered?.({ userId: payloadUserId, messageId: payloadMessageId, conversationId })
       }
     })
     setStatus(client.status)
