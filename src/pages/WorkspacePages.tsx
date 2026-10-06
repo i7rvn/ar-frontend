@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/Input'
 import { Modal } from '@/components/ui/Modal'
 import { Spinner } from '@/components/ui/Spinner'
 import { api } from '@/lib/api'
-import { getPublicKey, registerOwnPublicKey, encryptTextForRecipients, decryptTextMessage } from '@/lib/e2e'
+import { getPublicKey, registerOwnPublicKey, getConversationE2EMembers, encryptTextForRecipients, decryptTextMessage } from '@/lib/e2e'
 import { formatCount, relativeTime } from '@/lib/format'
 import { useT } from '@/i18n/useT'
 import { cn } from '@/lib/cn'
@@ -65,10 +65,14 @@ export function MessagesPage() {
   useEffect(() => { void registerOwnPublicKey().catch((e: Error) => toast(e.message, 'error')) }, [toast])
   const send = useMutation({ mutationFn: async () => {
     if (!conversationId || !user || !text.trim()) throw new Error('الرسالة فارغة')
-    if (current?.type !== 'direct' || !current.other_user_id) throw new Error('الإرسال المشفّر للمجموعات يحتاج قائمة مفاتيح أعضاء المجموعة.')
-    const ownKey = await getPublicKey(user.id); const peerKey = await getPublicKey(current.other_user_id)
-    if (!ownKey || !peerKey) throw new Error('لازم الطرفان يسجلوا مفاتيح E2E قبل الإرسال')
-    const encrypted = await encryptTextForRecipients(text.trim(), [{ userId: user.id, keyId: ownKey.id, publicKeyJwk: ownKey.publicKeyJwk }, { userId: current.other_user_id, keyId: peerKey.id, publicKeyJwk: peerKey.publicKeyJwk }])
+    const ownKey = await getPublicKey(user.id)
+    if (!ownKey) throw new Error('سجل مفتاح E2E لهذا الجهاز أولاً')
+    const members = await getConversationE2EMembers(conversationId)
+    if (members.some((m) => !m.keyId || !m.publicKeyJwk)) throw new Error('بعض أعضاء المحادثة لم يسجلوا مفتاح E2E بعد')
+    const encrypted = await encryptTextForRecipients(
+      text.trim(),
+      members.map((m) => ({ userId: m.userId, keyId: m.keyId!, publicKeyJwk: m.publicKeyJwk! })),
+    )
     return api.post('/messages/send', { conversationId, ...encrypted, msgType: 'text' })
   }, onSuccess: () => { setText(''); void messages.refetch(); void convs.refetch() }, onError: (e: Error) => toast(e.message, 'error') })
   return <section className='min-h-[calc(100dvh-1px)]'>
@@ -94,10 +98,19 @@ function EditMessageModal({ message, onClose, onSaved }: { message: Message | nu
   useEffect(() => { if (message) decryptTextMessage(message).then((v) => setText(v ?? '')) }, [message])
   const mutation = useMutation({ mutationFn: async () => {
     if (!message || !text.trim()) throw new Error('المحتوى فارغ')
-    const identity = await getPublicKey(message.sender_id); if (!identity) throw new Error('مفتاح E2E غير موجود')
-    const ownIdentity = await getPublicKey(useAuthStore.getState().user!.id); if (!ownIdentity) throw new Error('مفتاح E2E غير موجود')
-    const encrypted = await encryptTextForRecipients(text.trim(), [{ userId: useAuthStore.getState().user!.id, keyId: ownIdentity.id, publicKeyJwk: ownIdentity.publicKeyJwk }, { userId: message.sender_id, keyId: identity.id, publicKeyJwk: identity.publicKeyJwk }])
-    return api.patch(`/messages/${message.id}`, { encryptedContent: encrypted.encrypted_content, nonce: encrypted.nonce })
+    const owner = useAuthStore.getState().user
+    if (!owner) throw new Error('لا توجد جلسة')
+    const members = await getConversationE2EMembers(message.conversation_id)
+    if (members.some((m) => !m.keyId || !m.publicKeyJwk)) throw new Error('بعض أعضاء المحادثة لم يسجلوا مفتاح E2E بعد')
+    const encrypted = await encryptTextForRecipients(
+      text.trim(),
+      members.map((m) => ({ userId: m.userId, keyId: m.keyId!, publicKeyJwk: m.publicKeyJwk! })),
+    )
+    return api.patch(`/messages/${message.id}`, {
+      encryptedContent: encrypted.encrypted_content,
+      nonce: encrypted.nonce,
+      keyEnvelopes: encrypted.keyEnvelopes,
+    })
   }, onSuccess: onSaved })
   return <Modal open={Boolean(message)} onClose={onClose} title='تعديل الرسالة'><textarea value={text} onChange={(e) => setText(e.target.value)} rows={5} className='w-full rounded-control border border-line bg-transparent p-3 outline-none focus:border-brand' /><Button className='mt-3' onClick={() => mutation.mutate()} loading={mutation.isPending}>حفظ التعديل</Button></Modal>
 }
