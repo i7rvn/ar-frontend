@@ -4,7 +4,7 @@
 const ar = {
   nav_home: 'الرئيسية', nav_search: 'بحث', nav_notifications: 'الإشعارات',
   nav_messages: 'الرسائل', nav_communities: 'المجتمعات', nav_profile: 'ملفي الشخصي',
-  nav_settings: 'الإعدادات', nav_stats: 'الإحصائيات', nav_logout: 'تسجيل الخروج',
+  nav_settings: 'الإعدادات', nav_stats: 'الإحصائيات', nav_stories: 'القصص', nav_logout: 'تسجيل الخروج',
   nav_post: 'نشر', nav_main: 'التنقل الرئيسي',
 
   auth_login_title: 'تسجيل الدخول', auth_register_title: 'حساب جديد',
@@ -57,7 +57,7 @@ type Dict = Record<TranslationKey, string>
 const en: Dict = {
   nav_home: 'Home', nav_search: 'Search', nav_notifications: 'Notifications',
   nav_messages: 'Messages', nav_communities: 'Communities', nav_profile: 'Profile',
-  nav_settings: 'Settings', nav_stats: 'Stats', nav_logout: 'Log out',
+  nav_settings: 'Settings', nav_stats: 'Stats', nav_stories: 'Stories', nav_logout: 'Log out',
   nav_post: 'Post', nav_main: 'Main navigation',
 
   auth_login_title: 'Log in', auth_register_title: 'Create account',
@@ -107,7 +107,7 @@ const en: Dict = {
 const fr: Dict = {
   nav_home: 'Accueil', nav_search: 'Recherche', nav_notifications: 'Notifications',
   nav_messages: 'Messages', nav_communities: 'Communautés', nav_profile: 'Profil',
-  nav_settings: 'Paramètres', nav_stats: 'Statistiques', nav_logout: 'Déconnexion',
+  nav_settings: 'Paramètres', nav_stats: 'Statistiques', nav_stories: 'Stories', nav_logout: 'Déconnexion',
   nav_post: 'Publier', nav_main: 'Navigation principale',
 
   auth_login_title: 'Connexion', auth_register_title: 'Créer un compte',
