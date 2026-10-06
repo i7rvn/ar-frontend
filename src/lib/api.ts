@@ -75,6 +75,7 @@ async function request<T>(endpoint: string, opts: RequestOptions = {}, isRetry =
   try {
     response = await fetch(`${config.apiUrl}${endpoint}`, {
       method,
+      credentials: 'include',
       headers,
       body: body !== undefined ? JSON.stringify(body) : undefined,
       signal,
@@ -87,7 +88,7 @@ async function request<T>(endpoint: string, opts: RequestOptions = {}, isRetry =
   const json = await parseJsonBody<ApiErrorBody>(response)
 
   // 401: نجدد التوكن مرة واحدة ثم نعيد نفس الطلب
-  if (response.status === 401 && auth && !isRetry && tokens.getRefresh()) {
+  if (response.status === 401 && auth && !isRetry) {
     try {
       refreshPromise ??= refreshSession().finally(() => {
         refreshPromise = null
@@ -99,7 +100,7 @@ async function request<T>(endpoint: string, opts: RequestOptions = {}, isRetry =
       throw new ApiError('انتهت جلستك، سجّل الدخول من جديد', 401, 'SESSION_EXPIRED')
     }
   }
-  if (response.status === 401 && auth) useAuthStore.getState().clear()
+  if (response.status === 401 && auth && isRetry) useAuthStore.getState().clear()
 
   if (!response.ok) {
     throw new ApiError(json?.message || 'حدث خطأ غير متوقع', response.status, json?.code, {
@@ -122,6 +123,7 @@ async function upload<T>(endpoint: string, form: FormData, signal?: AbortSignal)
   try {
     response = await fetch(`${config.apiUrl}${endpoint}`, {
       method: 'POST',
+      credentials: 'include',
       headers,
       body: form,
       signal,
@@ -133,7 +135,7 @@ async function upload<T>(endpoint: string, form: FormData, signal?: AbortSignal)
 
   const json = await parseJsonBody<ApiErrorBody>(response)
 
-  if (response.status === 401 && token && tokens.getRefresh()) {
+  if (response.status === 401 && token) {
     try {
       refreshPromise ??= refreshSession().finally(() => { refreshPromise = null })
       await refreshPromise
