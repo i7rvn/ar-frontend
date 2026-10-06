@@ -34,6 +34,14 @@ interface RequestOptions {
   signal?: AbortSignal
 }
 
+async function parseJsonBody<T>(response: Response): Promise<T | null> {
+  try {
+    return (await response.json()) as T
+  } catch {
+    return null
+  }
+}
+
 // يمنع سباق عدة تجديدات توكن متزامنة (الخادم يدوّر refresh token)
 let refreshPromise: Promise<void> | null = null
 
@@ -76,12 +84,7 @@ async function request<T>(endpoint: string, opts: RequestOptions = {}, isRetry =
     throw new ApiError('تحقق من اتصالك بالإنترنت', 0, 'NETWORK_ERROR')
   }
 
-  let json: ApiErrorBody | null = null
-  try {
-    json = await response.json()
-  } catch {
-    // رد بلا JSON (نادر) — نكمل بجسم فارغ
-  }
+  const json = await parseJsonBody<ApiErrorBody>(response)
 
   // 401: نجدد التوكن مرة واحدة ثم نعيد نفس الطلب
   if (response.status === 401 && auth && !isRetry && tokens.getRefresh()) {
@@ -128,8 +131,7 @@ async function upload<T>(endpoint: string, form: FormData, signal?: AbortSignal)
     throw new ApiError('تحقق من اتصالك بالإنترنت', 0, 'NETWORK_ERROR')
   }
 
-  let json: ApiErrorBody | null = null
-  try { json = (await response.json()) as typeof json } catch {}
+  const json = await parseJsonBody<ApiErrorBody>(response)
 
   if (response.status === 401 && token && tokens.getRefresh()) {
     try {
