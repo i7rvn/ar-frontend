@@ -1,8 +1,12 @@
-const accessToken = { value: null as string | null }
+let accessToken: string | null = null
 
 export const tokens = {
-  getAccess: () => accessToken.value,
+  getAccess: () => accessToken,
   getRefresh: () => null,
-  set: (access?: string) => { if (access) accessToken.value = access },
-  clear: () => { accessToken.value = null },
+  set: (nextAccessToken?: string) => {
+    accessToken = nextAccessToken ?? null
+  },
+  clear: () => {
+    accessToken = null
+  },
 } as const
