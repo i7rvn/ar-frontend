@@ -39,8 +39,9 @@ export interface Post {
 
 export interface Conversation {
   id?: string; conversation_id?: string; type: 'direct' | 'group'; name?: string | null
-  avatar_url?: string | null; last_msg_at?: string | null; last_msg_text?: string | null
-  unread_count?: number; other_user_id?: string | null
+  avatar_url?: string | null; display_name?: string | null; display_avatar?: string | null
+  last_msg_at?: string | null; last_msg_text?: string | null; unread_count?: number; is_muted?: boolean
+  other_user_id?: string | null
 }
 
 export interface Message {
