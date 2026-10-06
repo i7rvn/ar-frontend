@@ -49,6 +49,8 @@ export interface Message {
   msg_type: 'text' | 'image' | 'video' | 'audio' | 'file'; media_url?: string | null
   reply_to_id?: string | null; is_deleted?: boolean; is_edited?: boolean; edited_at?: string | null
   is_pinned?: boolean; pinned_at?: string | null; created_at: string
+  encryption_version?: number
+  encryption_algorithm?: string
   e2e_key_envelopes?: Array<{ messageId: string; keyId: string; encryptedMessageKey: string }>
   sender?: Pick<User, 'id' | 'username' | 'display_name' | 'avatar_url'>
 }
