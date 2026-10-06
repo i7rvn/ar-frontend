@@ -15,7 +15,7 @@ interface AuthState {
 
 export const useAuthStore = create<AuthState>((set) => ({
   user: null,
-  status: tokens.getAccess() ? 'loading' : 'guest',
+  status: 'loading',
   setUser: (user) => set({ user, status: 'authed' }),
   clear: () => {
     tokens.clear()
