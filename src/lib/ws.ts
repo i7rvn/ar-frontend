@@ -9,6 +9,17 @@ type ServerEvent = { type: string; payload?: JsonObject }
 function stringField(payload: JsonObject, key: string): string | undefined {
   return typeof payload[key] === 'string' ? payload[key] as string : undefined
 }
+
+function isMessagePayload(payload: JsonObject): payload is unknown as Message {
+  return Boolean(
+    stringField(payload, 'id') &&
+    stringField(payload, 'conversation_id') &&
+    stringField(payload, 'sender_id') &&
+    stringField(payload, 'encrypted_content') &&
+    stringField(payload, 'nonce') &&
+    stringField(payload, 'msg_type'),
+  )
+}
 type Status = 'connecting' | 'open' | 'closed'
 
 function websocketUrl(token: string): string {
@@ -129,16 +140,16 @@ export function useRealtimeConversation(conversationId: string | undefined, hand
       const payloadUserId = stringField(payload, 'userId')
       const payloadMessageId = stringField(payload, 'messageId') ?? stringField(payload, 'id')
       if (event.type === 'message:new' && payloadConversationId === conversationId) {
-        handlersRef.current.onMessage?.(payload as Message)
+        if (isMessagePayload(payload)) handlersRef.current.onMessage?.(payload)
         if (payloadMessageId && stringField(payload, 'sender_id')) client.send('message:delivered', { conversationId, messageId: payloadMessageId })
       } else if (event.type === 'message:edited' && payloadConversationId === conversationId) {
-        handlersRef.current.onMessageEdited?.(payload as Message)
+        if (isMessagePayload(payload)) handlersRef.current.onMessageEdited?.(payload)
       } else if (event.type === 'message:reaction') {
         handlersRef.current.onMessageReaction?.(payload)
       } else if (event.type === 'message:pinned' && payloadConversationId === conversationId) {
-        handlersRef.current.onMessagePinned?.(payload as Message)
+        if (isMessagePayload(payload)) handlersRef.current.onMessagePinned?.(payload)
       } else if (event.type === 'message:unpinned' && payloadConversationId === conversationId) {
-        handlersRef.current.onMessageUnpinned?.(payload as Message)
+        if (isMessagePayload(payload)) handlersRef.current.onMessageUnpinned?.(payload)
       } else if ((event.type === 'typing:start' || event.type === 'typing:stop') && payloadConversationIdCamel === conversationId && payloadUserId) {
         handlersRef.current.onTyping?.({ type: event.type, userId: payloadUserId, conversationId })
         setTypingUserIds((ids) => event.type === 'typing:start'
