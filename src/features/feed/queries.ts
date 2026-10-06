@@ -14,7 +14,7 @@ export function useFeed(tab: FeedTab) {
   }, getNextPageParam: (last) => last.posts.length === PAGE_SIZE ? last.page + 1 : undefined, staleTime: 30_000 })
 }
 
-export interface CreatePostInput { content: string; isSensitive?: boolean; sensitiveWarning?: string; visibility?: PostVisibility; poll?: { options: string[]; durationSeconds: number } }
+export interface CreatePostInput { content: string; mediaUrls?: string[]; mediaTypes?: string[]; isSensitive?: boolean; sensitiveWarning?: string; visibility?: PostVisibility; poll?: { options: string[]; durationSeconds: number } }
 export function useCreatePost() {
   const qc = useQueryClient(); const toast = useUiStore((s) => s.toast)
   return useMutation({ mutationFn: (input: CreatePostInput) => api.post<ApiEnvelope<Post>>('/posts', input), onSuccess: () => { void qc.invalidateQueries({ queryKey: ['feed'] }) }, onError: (err: Error) => toast(err.message, 'error') })
