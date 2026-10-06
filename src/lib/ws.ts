@@ -20,6 +20,7 @@ interface RealtimeSocket {
   subscribe: (listener: (event: ServerEvent) => void) => () => void
   send: (type: string, payload: unknown) => boolean
   stop: () => void
+  start: () => void
   get status(): Status
 }
 
@@ -34,72 +35,69 @@ function websocketUrl(ticket: string): string {
   return `${apiUrl.protocol === 'https:' ? 'wss:' : 'ws:'}//${apiUrl.host}/ws?ticket=${encodeURIComponent(ticket)}`
 }
 
-export function createRealtimeSocket(): Promise<RealtimeSocket> {
-  return new Promise((resolve) => {
-    let socket: WebSocket | null = null
-    let stopped = false
-    let reconnectTimer: number | undefined
-    let heartbeatTimer: number | undefined
-    let reconnectAttempt = 0
-    let opened = false
-    const listeners = new Set<(event: ServerEvent) => void>()
+export function createRealtimeSocket(): RealtimeSocket {
+  let socket: WebSocket | null = null
+  let stopped = false
+  let reconnectTimer: number | undefined
+  let heartbeatTimer: number | undefined
+  let reconnectAttempt = 0
+  const listeners = new Set<(event: ServerEvent) => void>()
 
-    const clearTimers = () => {
-      if (reconnectTimer !== undefined) window.clearTimeout(reconnectTimer)
-      if (heartbeatTimer !== undefined) window.clearInterval(heartbeatTimer)
-      reconnectTimer = undefined
-      heartbeatTimer = undefined
-    }
+  const clearTimers = () => {
+    if (reconnectTimer !== undefined) window.clearTimeout(reconnectTimer)
+    if (heartbeatTimer !== undefined) window.clearInterval(heartbeatTimer)
+    reconnectTimer = undefined
+    heartbeatTimer = undefined
+  }
 
-    const send = (type: string, payload: unknown) => {
-      if (socket?.readyState !== WebSocket.OPEN) return false
-      socket.send(JSON.stringify({ type, payload }))
-      return true
-    }
+  const send = (type: string, payload: unknown) => {
+    if (socket?.readyState !== WebSocket.OPEN) return false
+    socket.send(JSON.stringify({ type, payload }))
+    return true
+  }
 
-    const scheduleReconnect = () => {
-      if (stopped) return
-      const delay = Math.min(30_000, 1_000 * 2 ** reconnectAttempt)
-      reconnectAttempt += 1
-      reconnectTimer = window.setTimeout(() => { void connect() }, delay)
-    }
+  const scheduleReconnect = () => {
+    if (stopped || !tokens.getAccess()) return
+    const delay = Math.min(30_000, 1_000 * 2 ** reconnectAttempt)
+    reconnectAttempt += 1
+    reconnectTimer = window.setTimeout(() => { void connect() }, delay)
+  }
 
-    const connect = async () => {
-      if (stopped || !tokens.getAccess()) return
+  const connect = async () => {
+    if (stopped || !tokens.getAccess()) return
+    clearTimers()
+    let ticket: string
+    try { ticket = await getWebSocketTicket() } catch { scheduleReconnect(); return }
+    if (stopped || !tokens.getAccess()) return
+    socket = new WebSocket(websocketUrl(ticket))
+    socket.addEventListener('open', () => {
+      reconnectAttempt = 0
+      heartbeatTimer = window.setInterval(() => { send('ping', {}) }, 25_000)
+      listeners.forEach((listener) => listener({ type: '__open__' }))
+    })
+    socket.addEventListener('message', (event) => {
+      try { listeners.forEach((listener) => listener(JSON.parse(String(event.data)) as ServerEvent)) } catch {}
+    })
+    socket.addEventListener('close', (event) => {
       clearTimers()
-      let ticket: string
-      try { ticket = await getWebSocketTicket() } catch { scheduleReconnect(); return }
-      if (stopped) return
-      socket = new WebSocket(websocketUrl(ticket))
-      socket.addEventListener('open', () => {
-        opened = true
-        reconnectAttempt = 0
-        heartbeatTimer = window.setInterval(() => { send('ping', {}) }, 25_000)
-        listeners.forEach((listener) => listener({ type: '__open__' }))
-        if (!clientResolved) { clientResolved = true; resolve(client) }
-      })
-      socket.addEventListener('message', (event) => {
-        try { listeners.forEach((listener) => listener(JSON.parse(String(event.data)) as ServerEvent)) } catch {}
-      })
-      socket.addEventListener('close', (event) => {
-        opened = false
-        clearTimers()
-        listeners.forEach((listener) => listener({ type: '__close__', payload: { code: event.code } }))
-        if (!stopped && event.code !== 4001) scheduleReconnect()
-      })
-    }
+      listeners.forEach((listener) => listener({ type: '__close__', payload: { code: event.code } }))
+      if (!stopped && event.code !== 4001 && tokens.getAccess()) scheduleReconnect()
+    })
+    socket.addEventListener('error', () => {})
+  }
 
-    let clientResolved = false
-    const client: RealtimeSocket = {
-      subscribe: (listener) => { listeners.add(listener); return () => listeners.delete(listener) },
-      send,
-      stop: () => { stopped = true; clearTimers(); socket?.close(1000, 'client stop'); socket = null },
-      get status() { return opened ? 'open' : socket?.readyState === WebSocket.CONNECTING ? 'connecting' : 'closed' },
-    }
-    void connect()
-  })
+  return {
+    subscribe: (listener) => { listeners.add(listener); return () => listeners.delete(listener) },
+    send,
+    stop: () => { stopped = true; clearTimers(); socket?.close(1000, 'client stop'); socket = null },
+    get status() {
+      if (socket?.readyState === WebSocket.OPEN) return 'open'
+      if (socket?.readyState === WebSocket.CONNECTING) return 'connecting'
+      return 'closed'
+    },
+    start: () => { void connect() },
+  } as RealtimeSocket & { start: () => void }
 }
-
 export interface RealtimeHandlers {
   onMessage?: (message: Message) => void
   onMessageEdited?: (message: Message) => void
@@ -124,7 +122,7 @@ export function useRealtimeConversation(conversationId: string | undefined, hand
     let client: RealtimeSocket | null = null
     let cleanup: (() => void) | null = null
     const start = async () => {
-      try { client = await createRealtimeSocket() } catch { setStatus('closed'); return }
+      client = createRealtimeSocket()
       if (cancelled || !client) { client?.stop(); return }
       socketRef.current = client
       cleanup = client.subscribe((event) => {
@@ -145,6 +143,7 @@ export function useRealtimeConversation(conversationId: string | undefined, hand
         else if (event.type === 'message:delivered' && conversation === conversationId && userId && messageId) handlersRef.current.onDelivered?.({ userId, messageId, conversationId })
       })
       setStatus(client.status)
+      client.start()
     }
     void start()
     return () => { cancelled = true; cleanup?.(); client?.send('leave:room', { conversationId }); client?.stop(); socketRef.current = null }
