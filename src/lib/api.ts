@@ -106,6 +106,45 @@ async function request<T>(endpoint: string, opts: RequestOptions = {}, isRetry =
   return json as T
 }
 
+async function upload<T>(endpoint: string, form: FormData, signal?: AbortSignal): Promise<T> {
+  const headers: Record<string, string> = {
+    'X-Client-Key': config.clientKey,
+  }
+  const token = tokens.getAccess()
+  if (token) headers.Authorization = `Bearer ${token}`
+
+  let response: Response
+  try {
+    response = await fetch(`${config.apiUrl}${endpoint}`, {
+      method: 'POST',
+      headers,
+      body: form,
+      signal,
+    })
+  } catch (err) {
+    if (err instanceof DOMException && err.name === 'AbortError') throw err
+    throw new ApiError('تحقق من اتصالك بالإنترنت', 0, 'NETWORK_ERROR')
+  }
+
+  let json: (Record<string, unknown> & { message?: string; code?: string }) | null = null
+  try { json = (await response.json()) as typeof json } catch {}
+
+  if (response.status === 401 && token && tokens.getRefresh()) {
+    try {
+      refreshPromise ??= refreshSession().finally(() => { refreshPromise = null })
+      await refreshPromise
+      return upload<T>(endpoint, form, signal)
+    } catch {
+      useAuthStore.getState().clear()
+      throw new ApiError('انتهت جلستك، سجّل الدخول من جديد', 401, 'SESSION_EXPIRED')
+    }
+  }
+  if (!response.ok) {
+    throw new ApiError(json?.message || 'حدث خطأ غير متوقع', response.status, json?.code)
+  }
+  return json as T
+}
+
 export const api = {
   get: <T>(endpoint: string, opts?: Omit<RequestOptions, 'method' | 'body'>) =>
     request<T>(endpoint, { ...opts, method: 'GET' }),
@@ -113,6 +152,7 @@ export const api = {
     request<T>(endpoint, { ...opts, method: 'POST', body: body ?? {} }),
   put: <T>(endpoint: string, body?: unknown, opts?: Omit<RequestOptions, 'method' | 'body'>) =>
     request<T>(endpoint, { ...opts, method: 'PUT', body: body ?? {} }),
+  upload: <T>(endpoint: string, form: FormData, signal?: AbortSignal) => upload<T>(endpoint, form, signal),
   delete: <T>(endpoint: string, opts?: Omit<RequestOptions, 'method' | 'body'>) =>
     request<T>(endpoint, { ...opts, method: 'DELETE' }),
 }
