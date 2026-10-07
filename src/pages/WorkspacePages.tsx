@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
-import { Link, useNavigate, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { BarChart3, Bell, Eye, MessageCircle, Search, Settings, Sparkles, Users, X } from 'lucide-react'
 import { Avatar } from '@/components/ui/Avatar'
@@ -23,14 +23,17 @@ function PageTitle({ icon: Icon, title, body }: { icon: typeof Search; title: st
 }
 
 export function SearchPage() {
-  const [q, setQ] = useState('')
-  const [submitted, setSubmitted] = useState('')
+  const [searchParams, setSearchParams] = useSearchParams()
+  const urlQuery = searchParams.get('q')?.trim() ?? ''
+  const [q, setQ] = useState(urlQuery)
+  const [submitted, setSubmitted] = useState(urlQuery)
+  useEffect(() => { setQ(urlQuery); setSubmitted(urlQuery) }, [urlQuery])
   const result = useQuery({
     queryKey: ['search', submitted],
     enabled: submitted.length >= 2,
     queryFn: () => api.get<ApiEnvelope<{ posts: Post[]; users: User[]; hashtags: Array<{ tag: string; posts_count: number }> }>>(`/search?q=${encodeURIComponent(submitted)}`),
   })
-  function submit(e: FormEvent) { e.preventDefault(); setSubmitted(q.trim()) }
+  function submit(e: FormEvent) { e.preventDefault(); const term = q.trim(); setSubmitted(term); setSearchParams(term ? { q: term } : {}) }
   return <section>
     <PageTitle icon={Search} title='بحث' body='ابحث عن أشخاص ومنشورات ووسوم داخل AR' />
     <form onSubmit={submit} className='border-b border-line p-4'><Input label='البحث' value={q} onChange={(e) => setQ(e.target.value)} placeholder='اكتب كلمتين أو أكثر...' aria-label='البحث' /><Button type='submit' className='mt-3' disabled={q.trim().length < 2}>بحث</Button></form>
