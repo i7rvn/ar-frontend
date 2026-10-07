@@ -107,7 +107,7 @@ async function request<T>(endpoint: string, opts: RequestOptions = {}, isRetry =
   return json as T
 }
 
-async function upload<T>(endpoint: string, form: FormData, signal?: AbortSignal): Promise<T> {
+async function upload<T>(endpoint: string, form: FormData, signal?: AbortSignal, isRetry = false): Promise<T> {
   const headers: Record<string, string> = {
     'X-Client-Key': config.clientKey,
   }
@@ -130,16 +130,17 @@ async function upload<T>(endpoint: string, form: FormData, signal?: AbortSignal)
 
   const json = await parseJsonBody<ApiErrorBody>(response)
 
-  if (response.status === 401 && token) {
+  if (response.status === 401 && token && !isRetry) {
     try {
       refreshPromise ??= refreshSession().finally(() => { refreshPromise = null })
       await refreshPromise
-      return upload<T>(endpoint, form, signal)
+      return upload<T>(endpoint, form, signal, true)
     } catch {
       useAuthStore.getState().clear()
       throw new ApiError('انتهت جلستك، سجّل الدخول من جديد', 401, 'SESSION_EXPIRED')
     }
   }
+  if (response.status === 401 && isRetry) useAuthStore.getState().clear()
   if (!response.ok) {
     throw new ApiError(json?.message || 'حدث خطأ غير متوقع', response.status, json?.code)
   }
