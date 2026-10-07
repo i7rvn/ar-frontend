@@ -31,7 +31,7 @@ function getPasswordStrength(password: string, username: string, email: string) 
     /[^a-zA-Z0-9]/.test(password),
   ].filter(Boolean).length
   const personalized = [username, email.split('@')[0]].some((value) => value.length >= 3 && lower.includes(value.toLowerCase()))
-  const repeated = /^(.)\\1+$/.test(password)
+  const repeated = /^(.)\1+$/.test(password)
   if (password.length < 8 || personalized || repeated) return { score: 1, label: 'ضعيفة' }
   if (password.length >= 18 && classes >= 4) return { score: 5, label: 'ممتازة' }
   if (password.length >= 14 && classes >= 3) return { score: 4, label: 'قوية جدًا' }
