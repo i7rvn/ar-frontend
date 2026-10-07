@@ -148,7 +148,7 @@ export function MessagesPage() {
 
 function MessageBubble({ message, currentUserId, onEdit }: { message: Message; currentUserId?: string; onEdit: () => void }) {
   const [plain, setPlain] = useState<string | null>(null); const mine = currentUserId === message.sender_id
-  useEffect(() => { let alive = true; decryptTextMessage(message).then((value) => { if (alive) setPlain(value) }); return () => { alive = false } }, [message])
+  useEffect(() => { let alive = true; decryptTextMessage(message).then((value) => { if (alive) setPlain(value) }).catch(() => { if (alive) setPlain('تعذر فك تشفير الرسالة') }); return () => { alive = false } }, [message])
   const react = useMutation({ mutationFn: (reaction: string) => api.post(`/messages/${message.id}/reaction`, { reaction }) })
   const pin = useMutation({ mutationFn: () => api.post(`/messages/${message.id}/pin`) })
   return <div className={cn('flex gap-2', mine && 'justify-end')}><div className={cn('max-w-[75%] rounded-surface px-3 py-2', mine ? 'bg-brand text-on-brand' : 'bg-raised')}><p className='whitespace-pre-wrap'>{plain ?? (message.is_deleted ? 'رسالة محذوفة' : 'رسالة مشفرة')}</p>{message.is_edited && <span className='mt-1 block text-[11px] opacity-70'>معدلة</span>}<div className='mt-1 flex items-center gap-2 text-[11px] opacity-70'><button type='button' onClick={() => react.mutate('❤️')} aria-label='قلب'>❤️</button><button type='button' onClick={() => react.mutate('😂')} aria-label='ضحك'>😂</button>{mine && <button type='button' onClick={onEdit}>تعديل</button>}<button type='button' onClick={() => pin.mutate()}>{message.is_pinned ? 'مثبت' : 'تثبيت'}</button></div></div></div>
@@ -156,7 +156,7 @@ function MessageBubble({ message, currentUserId, onEdit }: { message: Message; c
 
 function EditMessageModal({ message, onClose, onSaved }: { message: Message | null; onClose: () => void; onSaved: () => void }) {
   const [text, setText] = useState('')
-  useEffect(() => { if (message) decryptTextMessage(message).then((v) => setText(v ?? '')) }, [message])
+  useEffect(() => { if (message) decryptTextMessage(message).then((v) => setText(v ?? '')).catch(() => setText('')) }, [message])
   const mutation = useMutation({ mutationFn: async () => {
     if (!message || !text.trim()) throw new Error('المحتوى فارغ')
     const members = await getConversationE2EMembers(message.conversation_id)
