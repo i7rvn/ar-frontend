@@ -259,7 +259,7 @@ export function RegisterPage() {
           className="text-start"
         />
         {usernameStatus && (
-          <p role="status" aria-live="polite" className={cn('text-xs', usernameStatusAvailable ? 'text-success' : usernameStatusUnavailable ? 'text-danger' : 'text-muted')}>
+          <p role="status" aria-live="polite" className={cn('text-xs', usernameStatusAvailable ? 'text-brand' : usernameStatusUnavailable ? 'text-danger' : 'text-muted')}>
             {usernameStatus}
           </p>
         )}
