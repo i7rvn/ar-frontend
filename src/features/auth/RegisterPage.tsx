@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
-import { useMutation } from '@tanstack/react-query'
+import { useMutation, useQuery } from '@tanstack/react-query'
 import { AuthLayout } from '@/components/layout/AuthLayout'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
@@ -20,6 +20,24 @@ type Step = 'form' | 'otp'
 type FieldErrors = Partial<Record<'email' | 'username' | 'displayName' | 'password' | 'confirm' | 'invite' | 'phone' | 'otp', string>>
 
 const RESEND_SECONDS = 60
+
+function getPasswordStrength(password: string, username: string, email: string) {
+  if (!password) return { score: 0, label: '' }
+  const lower = password.toLowerCase()
+  const classes = [
+    /[a-z]/.test(password),
+    /[A-Z]/.test(password),
+    /[0-9]/.test(password),
+    /[^a-zA-Z0-9]/.test(password),
+  ].filter(Boolean).length
+  const personalized = [username, email.split('@')[0]].some((value) => value.length >= 3 && lower.includes(value.toLowerCase()))
+  const repeated = /^(.)\\1+$/.test(password)
+  if (password.length < 8 || personalized || repeated) return { score: 1, label: 'ضعيفة' }
+  if (password.length >= 18 && classes >= 4) return { score: 5, label: 'ممتازة' }
+  if (password.length >= 14 && classes >= 3) return { score: 4, label: 'قوية جدًا' }
+  if (password.length >= 10 && classes >= 3) return { score: 3, label: 'قوية' }
+  return { score: 2, label: 'متوسطة' }
+}
 
 export function RegisterPage() {
   const t = useT()
@@ -42,6 +60,40 @@ export function RegisterPage() {
   const [otp, setOtp] = useState('')
   const [errors, setErrors] = useState<FieldErrors>({})
   const [resendIn, setResendIn] = useState(0)
+  const [debouncedUsername, setDebouncedUsername] = useState('')
+  const passwordStrength = getPasswordStrength(password, username, email)
+  const usernameCheck = useQuery({
+    queryKey: ['username-availability', debouncedUsername],
+    queryFn: () => api.get<ApiEnvelope<{ available: boolean }>>(`/users/username-availability?username=${encodeURIComponent(debouncedUsername)}`, { auth: false }),
+    enabled: Boolean(debouncedUsername),
+    retry: 1,
+    staleTime: 30_000,
+  })
+
+  useEffect(() => {
+    const normalized = username.trim().toLowerCase()
+    if (rules.username(normalized)) {
+      setDebouncedUsername('')
+      return
+    }
+    const timer = window.setTimeout(() => setDebouncedUsername(normalized), 400)
+    return () => window.clearTimeout(timer)
+  }, [username])
+
+  const normalizedUsername = username.trim().toLowerCase()
+  const usernameStatus = !normalizedUsername || rules.username(normalizedUsername)
+    ? ''
+    : normalizedUsername !== debouncedUsername
+      ? 'جارٍ التحقق من التوفر…'
+      : usernameCheck.isPending
+        ? 'جارٍ التحقق من التوفر…'
+        : usernameCheck.isError
+          ? 'تعذر التحقق الآن؛ سيتأكد الخادم عند التسجيل.'
+          : usernameCheck.data?.data.available
+            ? 'اسم المستخدم متاح'
+            : 'اسم المستخدم غير متاح'
+  const usernameStatusAvailable = normalizedUsername === debouncedUsername && usernameCheck.data?.data.available === true
+  const usernameStatusUnavailable = normalizedUsername === debouncedUsername && usernameCheck.data?.data.available === false
 
   useEffect(() => {
     if (resendIn <= 0) return
@@ -113,7 +165,7 @@ export function RegisterPage() {
     const next: FieldErrors = {
       email: channel === 'email' ? tr(rules.email(email.trim())) : undefined,
       phone: channel === 'whatsapp' ? tr(rules.phone(phone.trim())) : undefined,
-      username: tr(rules.username(username)),
+      username: usernameStatusUnavailable ? 'اسم المستخدم غير متاح' : tr(rules.username(username)),
       displayName: tr(rules.displayName(displayName)),
       password: tr(rules.password(password)),
       confirm: confirm !== password ? t('auth_password_mismatch') : undefined,
@@ -206,6 +258,11 @@ export function RegisterPage() {
           dir="ltr"
           className="text-start"
         />
+        {usernameStatus && (
+          <p role="status" aria-live="polite" className={cn('text-xs', usernameStatusAvailable ? 'text-success' : usernameStatusUnavailable ? 'text-danger' : 'text-muted')}>
+            {usernameStatus}
+          </p>
+        )}
 
         {/* قناة التحقق: بريد أو واتساب */}
         <div role="group" aria-label="OTP channel" className="grid grid-cols-2 gap-1 rounded-control border border-line p-1">
@@ -276,6 +333,16 @@ export function RegisterPage() {
           dir="ltr"
           className="text-start"
         />
+        {password && (
+          <div aria-label={`قوة كلمة المرور: ${passwordStrength.label}`}>
+            <div role="meter" aria-valuemin={0} aria-valuemax={5} aria-valuenow={passwordStrength.score} aria-label="قوة كلمة المرور" className="grid grid-cols-5 gap-1">
+              {Array.from({ length: 5 }, (_, index) => (
+                <span key={index} className={cn('h-1 rounded-full', index < passwordStrength.score ? 'bg-brand' : 'bg-line')} />
+              ))}
+            </div>
+            <p className="mt-1 text-xs text-muted" aria-live="polite">قوة كلمة المرور: {passwordStrength.label} <span className="text-subtle">(تقدير تقريبي)</span></p>
+          </div>
+        )}
         <Input
           label={t('auth_confirm_password')}
           type="password"
