@@ -11,6 +11,7 @@ export interface User {
   website?: string | null
   is_private?: boolean
   isFollowing?: boolean
+  followRequestPending?: boolean
   canViewPosts?: boolean
   followers_count?: number
   following_count?: number
@@ -66,3 +67,4 @@ export interface StoryGroup {
 
 export interface ApiEnvelope<T> { success: boolean; message?: string; data: T }
 export interface AuthPayload { accessToken: string; refreshToken: string; user: User }
+

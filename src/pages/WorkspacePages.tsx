@@ -54,7 +54,7 @@ export function NotificationsPage() {
   const readAll = useMutation({ mutationFn: () => api.put('/notifications/read-all'), onSuccess: () => qc.invalidateQueries({ queryKey: ['notifications'] }) })
   return <section><PageTitle icon={Bell} title={t('nav_notifications')} />
     <div className='flex items-center justify-between border-b border-line px-5 py-3'>{query.data && <span className='text-sm text-muted'>{query.data.data.unread_count} غير مقروء</span>}<Button variant='ghost' onClick={() => readAll.mutate()} disabled={readAll.isPending}>تعيين كمقروء</Button></div>
-    {query.isPending ? <div className='p-8 text-center'><Spinner /></div> : query.isError ? <p className='p-8 text-center text-danger'>{query.error.message}</p> : <div>{query.data?.data.notifications.map((n) => <div key={n.id} className={cn('flex gap-3 border-b border-line px-5 py-4', !n.is_read && 'bg-brand-soft')}><Avatar src={n.actor_avatar} name={n.actor_display_name} size='sm' /><div className='min-w-0 flex-1'><p><strong>{n.actor_display_name}</strong> {n.type === 'follow' ? 'تابعك.' : 'تفاعل معك.'}</p><p className='mt-1 text-xs text-muted'>{relativeTime(n.created_at, 'ar')}</p>{n.post_content && <p className='mt-2 text-sm text-muted line-clamp-2'>{n.post_content}</p>}</div></div>)}</div>}
+    {query.isPending ? <div className='p-8 text-center'><Spinner /></div> : query.isError ? <p className='p-8 text-center text-danger'>{query.error.message}</p> : <div>{query.data?.data.notifications.map((n) => <div key={n.id} className={cn('flex gap-3 border-b border-line px-5 py-4', !n.is_read && 'bg-brand-soft')}><Avatar src={n.actor_avatar} name={n.actor_display_name} size='sm' /><div className='min-w-0 flex-1'><p><strong>{n.actor_display_name}</strong> {n.type === 'follow' ? 'تابعك.' : n.type === 'follow_request' ? 'أرسل طلب متابعة.' : 'تفاعل معك.'}</p><p className='mt-1 text-xs text-muted'>{relativeTime(n.created_at, 'ar')}</p>{n.post_content && <p className='mt-2 text-sm text-muted line-clamp-2'>{n.post_content}</p>}</div></div>)}</div>}
   </section>
 }
 
@@ -206,7 +206,114 @@ export function SettingsPage() {
 }
 export function StatsPage() { const q=useQuery({queryKey:['stats'],queryFn:()=>api.get<any>('/stats?days=7')}); return <section><PageTitle icon={BarChart3} title='الإحصائيات' />{q.isPending?<div className='grid place-items-center p-10'><Spinner/></div>:q.isError?<p className='p-8 text-center text-danger'>{q.error.message}</p>:<div className='grid gap-3 p-4 sm:grid-cols-2'>{['impressions','engagement','profileVisits','newFollowers'].map((k)=><div key={k} className='rounded-surface border border-line bg-surface p-4'><p className='text-sm text-muted'>{k}</p><p className='mt-2 text-2xl font-bold'>{q.data?.[k]?.value??0}</p><p className='text-xs text-muted'>{q.data?.[k]?.changePercent??0}% مقارنة بالفترة السابقة</p></div>)}</div>}</section> }
 
-export function ProfilePage() { const {username}=useParams(); const q=useQuery({queryKey:['profile',username],queryFn:()=>api.get<ApiEnvelope<User>>(`/users/${encodeURIComponent(username!)}`),enabled:Boolean(username)}); const user=q.data?.data; const follow=useMutation({mutationFn:()=>api.post(`/follows/${user?.id}`),onSuccess:()=>q.refetch()}); const posts=useQuery({queryKey:['profile-posts',user?.id],enabled:Boolean(user?.id&&user?.canViewPosts!==false),queryFn:()=>api.get<ApiEnvelope<{posts:Post[]}>>(`/feed/user/${user!.id}?limit=20`)}); return <section>{q.isPending?<div className='grid place-items-center p-10'><Spinner/></div>:q.isError?<p className='p-10 text-center text-danger'>{q.error.message}</p>:!user?<p className='p-10 text-center'>المستخدم غير موجود</p>:<><div className='border-b border-line p-5'><div className='flex items-center gap-4'><Avatar src={user.avatar_url} name={user.display_name} size='lg'/><div className='min-w-0 flex-1'><h1 className='text-xl font-bold'>{user.display_name}</h1><p className='text-muted'>@{user.username}</p></div>{useAuthStore.getState().user?.id!==user.id&&<Button variant={user.isFollowing?'secondary':'primary'} onClick={()=>follow.mutate()}>{user.isFollowing?'متابَع':'متابعة'}</Button>}</div><p className='mt-4 whitespace-pre-wrap'>{user.bio}</p><div className='mt-4 flex gap-5 text-sm text-muted'><span>{user.posts_count??0} منشور</span><span>{user.followers_count??0} متابع</span><span>{user.following_count??0} يتابع</span></div></div>{user.canViewPosts===false?<p className='p-10 text-center text-muted'>هذا الحساب خاص. تابع الحساب لرؤية منشوراته.</p>:posts.isPending?<div className='grid place-items-center p-10'><Spinner/></div>:posts.isError?<p className='p-8 text-center text-danger'>{posts.error.message}</p>:posts.data?.data.posts.length?posts.data.data.posts.map(p=><PostCard key={p.id} post={p}/>):<p className='p-8 text-center text-muted'>لا توجد منشورات بعد.</p>}</>}</section> }
+interface FollowRequest {
+  id: string
+  username: string
+  display_name: string
+  avatar_url: string | null
+  is_verified: boolean
+  created_at: string
+}
+
+export function ProfilePage() {
+  const { username } = useParams()
+  const queryClient = useQueryClient()
+  const viewer = useAuthStore((state) => state.user)
+  const toast = useUiStore((state) => state.toast)
+  const profile = useQuery({
+    queryKey: ['profile', username],
+    queryFn: () => api.get<ApiEnvelope<User>>(`/users/${encodeURIComponent(username!)}`),
+    enabled: Boolean(username),
+  })
+  const user = profile.data?.data
+  const isOwnProfile = Boolean(viewer && user && viewer.id === user.id)
+  const followRequests = useQuery({
+    queryKey: ['follow-requests'],
+    queryFn: () => api.get<ApiEnvelope<FollowRequest[]>>('/follows/requests'),
+    enabled: isOwnProfile,
+  })
+  const follow = useMutation({
+    mutationFn: () => api.post(`/follows/${user?.id}`),
+    onSuccess: async () => {
+      await profile.refetch()
+      await queryClient.invalidateQueries({ queryKey: ['follow-requests'] })
+    },
+    onError: (error: Error) => toast(error.message, 'error'),
+  })
+  const handleFollowRequest = useMutation({
+    mutationFn: ({ id, action }: { id: string; action: 'accept' | 'reject' }) =>
+      api.post(`/follows/requests/${id}/${action}`),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['follow-requests'] })
+      await queryClient.invalidateQueries({ queryKey: ['profile'] })
+      toast('تم تحديث طلب المتابعة', 'success')
+    },
+    onError: (error: Error) => toast(error.message, 'error'),
+  })
+  const posts = useQuery({
+    queryKey: ['profile-posts', user?.id],
+    enabled: Boolean(user?.id && user.canViewPosts !== false),
+    queryFn: () => api.get<ApiEnvelope<{ posts: Post[] }>>(`/feed/user/${user!.id}?limit=20`),
+  })
+
+  if (profile.isPending) return <div className='grid place-items-center p-10'><Spinner /></div>
+  if (profile.isError) return <p className='p-10 text-center text-danger'>{profile.error.message}</p>
+  if (!user) return <p className='p-10 text-center'>المستخدم غير موجود</p>
+
+  const followLabel = user.isFollowing
+    ? 'متابَع'
+    : user.followRequestPending
+      ? 'إلغاء طلب المتابعة'
+      : user.is_private
+        ? 'طلب متابعة'
+        : 'متابعة'
+
+  return <section>
+    <div className='border-b border-line p-5'>
+      <div className='flex items-center gap-4'>
+        <Avatar src={user.avatar_url} name={user.display_name} size='lg' />
+        <div className='min-w-0 flex-1'>
+          <h1 className='text-xl font-bold'>{user.display_name}</h1>
+          <p className='text-muted'>@{user.username}</p>
+        </div>
+        {!isOwnProfile && <Button
+          variant={user.isFollowing || user.followRequestPending ? 'secondary' : 'primary'}
+          onClick={() => follow.mutate()}
+          loading={follow.isPending}
+        >{followLabel}</Button>}
+      </div>
+      <p className='mt-4 whitespace-pre-wrap'>{user.bio}</p>
+      <div className='mt-4 flex gap-5 text-sm text-muted'>
+        <span>{user.posts_count ?? 0} منشور</span>
+        <span>{user.followers_count ?? 0} متابع</span>
+        <span>{user.following_count ?? 0} يتابع</span>
+      </div>
+    </div>
+    {isOwnProfile && <section className='border-b border-line p-5'>
+      <h2 className='font-bold'>طلبات المتابعة</h2>
+      {followRequests.isPending ? <div className='p-4'><Spinner /></div>
+        : followRequests.isError ? <p className='mt-3 text-sm text-danger'>{followRequests.error.message}</p>
+          : followRequests.data?.data.length ? <div className='mt-3 space-y-3'>
+            {followRequests.data.data.map((request) => <div key={request.id} className='flex items-center gap-3 rounded-control border border-line p-3'>
+              <Avatar src={request.avatar_url} name={request.display_name} size='sm' />
+              <div className='min-w-0 flex-1'>
+                <p className='truncate font-semibold'>{request.display_name}</p>
+                <p className='truncate text-sm text-muted'>@{request.username}</p>
+              </div>
+              <Button size='sm' onClick={() => handleFollowRequest.mutate({ id: request.id, action: 'accept' })} loading={handleFollowRequest.isPending}>قبول</Button>
+              <Button size='sm' variant='secondary' onClick={() => handleFollowRequest.mutate({ id: request.id, action: 'reject' })} disabled={handleFollowRequest.isPending}>رفض</Button>
+            </div>)}
+          </div>
+          : <p className='mt-2 text-sm text-muted'>لا توجد طلبات متابعة جديدة.</p>}
+    </section>}
+    {user.canViewPosts === false
+      ? <p className='p-10 text-center text-muted'>هذا الحساب خاص. أرسل طلب متابعة وانتظر موافقة صاحبه لرؤية المنشورات.</p>
+      : posts.isPending ? <div className='grid place-items-center p-10'><Spinner /></div>
+        : posts.isError ? <p className='p-8 text-center text-danger'>{posts.error.message}</p>
+          : posts.data?.data.posts.length ? posts.data.data.posts.map((post) => <PostCard key={post.id} post={post} />)
+            : <p className='p-8 text-center text-muted'>لا توجد منشورات بعد.</p>}
+  </section>
+}
 
 export function PostPage() { const {id}=useParams(); const q=useQuery({queryKey:['post',id],queryFn:()=>api.get<ApiEnvelope<Post>>(`/posts/${id}`),enabled:Boolean(id)}); return <section>{q.isPending?<div className='grid place-items-center p-10'><Spinner/></div>:q.isError?<p className='p-10 text-center text-danger'>{q.error.message}</p>:q.data?<PostCard post={q.data.data}/>:<p className='p-10 text-center'>المنشور غير موجود</p>}</section> }
 
@@ -221,3 +328,4 @@ export function CommunityPage() {
   return <section>{q.isPending?<div className='grid place-items-center p-10'><Spinner/></div>:q.isError?<p className='p-8 text-center text-danger'>{q.error.message}</p>:!q.data?<p className='p-8 text-center text-muted'>المجتمع غير موجود.</p>:<><div className='border-b border-line p-5'><div className='flex items-center gap-3'><div className='min-w-0 flex-1'><h1 className='text-2xl font-bold'>{q.data.community.name}</h1><p className='mt-1 text-muted'>{q.data.community.description}</p><p className='mt-2 text-xs text-muted'>{q.data.community.members_count} أعضاء</p></div><Button variant={joined?'secondary':'primary'} onClick={()=>memberMutation.mutate()} loading={memberMutation.isPending}>{joined?'مغادرة':'انضمام'}</Button></div></div>{posts.isPending?<div className='grid place-items-center p-10'><Spinner/></div>:posts.isError?<p className='p-8 text-center text-danger'>{posts.error.message}</p>:posts.data?.posts?.length?posts.data.posts.map((post:Post)=><PostCard key={post.id} post={post}/>):<p className='p-8 text-center text-muted'>لا توجد منشورات في هذا المجتمع بعد.</p>}</>}</section>
 }
 export function StoriesPage() { const q=useQuery({queryKey:['stories'],queryFn:()=>api.get<ApiEnvelope<StoryGroup[]>>('/stories')}); return <section><PageTitle icon={Eye} title='Stories' body='محتوى يختفي تلقائياً بعد 24 ساعة' />{q.isPending?<div className='grid place-items-center p-10'><Spinner/></div>:q.isError?<p className='p-8 text-center text-danger'>{q.error.message}</p>:!q.data?.data.length?<p className='p-8 text-center text-muted'>لا توجد قصص حاليًا.</p>:<div className='space-y-5 p-4'>{q.data?.data.map((group)=> <div key={group.userId}><div className='mb-2 flex items-center gap-2'><Avatar src={group.avatarUrl} name={group.displayName} size='sm'/><p className='font-semibold'>{group.displayName}</p></div><div className='grid gap-3 sm:grid-cols-2'>{group.stories.map((story)=><article key={story.id} className='overflow-hidden rounded-surface border border-line bg-surface'>{story.type==='video'?<video src={story.url} controls className='aspect-[9/16] w-full object-cover'/>:<img src={story.url} alt='' className='aspect-[9/16] w-full object-cover'/>}<div className='p-3'><p className='text-sm'>{story.caption}</p></div></article>)}</div></div>)}</div>}</section> }
+
